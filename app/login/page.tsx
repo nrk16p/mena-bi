@@ -13,7 +13,7 @@ const bgStyle: React.CSSProperties = {
   backgroundRepeat: "no-repeat",
 }
 
-// Loop only the 2s–9s segment of the clip
+// Play the 2s–9s segment once, then freeze on the last frame
 const CLIP_START = 2
 const CLIP_END = 9
 
@@ -42,9 +42,9 @@ function LiveWallpaper() {
       }}
       onTimeUpdate={(e) => {
         const v = e.currentTarget
-        if (v.currentTime >= CLIP_END || v.ended) {
-          v.currentTime = CLIP_START
-          v.play().catch(() => {})
+        if (v.currentTime >= CLIP_END) {
+          v.currentTime = CLIP_END
+          v.pause()
         }
       }}
     >
