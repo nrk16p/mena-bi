@@ -13,6 +13,14 @@ import {
   Users,
   LogOut,
   Shield,
+  Database,
+  Table2,
+  Warehouse,
+  Truck,
+  Workflow,
+  SlidersHorizontal,
+  Scale,
+  FolderCog,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -63,7 +71,49 @@ const NAV_GROUPS: NavGroup[] = [
     activeText:   "text-gray-900 dark:text-white",
     activeBorder: "border-gray-500",
     items: [
-      { href: "/", label: "Home", icon: LayoutDashboard, exact: true },
+      { href: "/", label: "Overview", icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    label:        "Data Pipeline",
+    groupIcon:    Database,
+    permissionKey: "bi",
+    dot:          "bg-sky-500",
+    iconColor:    "text-sky-500 dark:text-sky-400",
+    activeBg:     "bg-sky-50 dark:bg-sky-950/40",
+    activeText:   "text-sky-700 dark:text-sky-300",
+    activeBorder: "border-sky-500",
+    items: [
+      { href: "/datapipeline/flows", label: "Flows", icon: Workflow },
+      { href: "/datapipeline/datasource", label: "Datasource", icon: Table2 },
+      { href: "/datapipeline/conditions", label: "Conditions", icon: SlidersHorizontal },
+    ],
+  },
+  {
+    label:        "Data Warehouse",
+    groupIcon:    Warehouse,
+    permissionKey: "bi",
+    dot:          "bg-amber-500",
+    iconColor:    "text-amber-500 dark:text-amber-400",
+    activeBg:     "bg-amber-50 dark:bg-amber-950/40",
+    activeText:   "text-amber-700 dark:text-amber-300",
+    activeBorder: "border-amber-500",
+    items: [
+      { href: "/datawarehouse/trip", label: "Trip", icon: Truck },
+      { href: "/datawarehouse/weight", label: "Master น้ำหนัก", icon: Scale },
+    ],
+  },
+  {
+    label:        "Master Data",
+    groupIcon:    FolderCog,
+    permissionKey: "bi",
+    dot:          "bg-indigo-500",
+    iconColor:    "text-indigo-500 dark:text-indigo-400",
+    activeBg:     "bg-indigo-50 dark:bg-indigo-950/40",
+    activeText:   "text-indigo-700 dark:text-indigo-300",
+    activeBorder: "border-indigo-500",
+    items: [
+      { href: "/masterdata/mastertruck", label: "Master รถ", icon: Truck },
     ],
   },
   {

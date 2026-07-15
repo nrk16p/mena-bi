@@ -1,0 +1,13 @@
+{
+  "excludedServices": [
+    "Mixer ชดเชยเชื้อเพลิง โม่เล็ก",
+    "Mixer ชดเชยเชื้อเพลิง โม่ใหญ่",
+    "ชดเชยเชื้อเพลิงตู้เย็น 9.5 10 ล้อ สระบุรี",
+    "ชดเชยเชื้อเพลิงตู้เย็น 9.5 12 ล้อ สระบุรี",
+    "ชดเชยเชื้อเพลิงงานตู้ผ้าใบ TDM"
+  ],
+  "excludedZones": ["Guarantee", "Fix Cost Old", "Fix Cost New"],
+  "excludedSubcodes": ["ค่าเที่ยว", "หักค่าเที่ยว"],
+  "subcodeKeywords": ["ค่า", "ของเสีย", "ตกค้าง", "D1-D2", "D2-", "Extra", "insen", "KN.Fix-cost"],
+  "ldtKeywords": ["Gen"]
+}
