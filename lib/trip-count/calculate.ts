@@ -78,40 +78,79 @@ export function toRuleRecord(row: DeliverRow): RuleRecord {
   };
 }
 
-// Trip = unique _ldt_base whose ออก LDT falls in the target month-year and
-// survives every cut rule. Returns the surviving rows as raw trip docs.
+interface MonthResolution {
+  monthKey: string;
+  uniqueLdt: number;
+  /** _ldt_base → the row that represents the trip (first row that survives the rules) */
+  kept: Map<string, DeliverRow>;
+  excluded: { total: number; byRule: Record<string, number> };
+}
+
+// One LDT can appear on several rows (e.g. a real delivery plus a
+// ชดเชยเชื้อเพลิง entry). Cut the LDT only when EVERY row of that month is cut;
+// otherwise the first surviving row represents the trip. This keeps the count
+// independent of the order Mongo returns rows in.
+function resolveMonth(
+  rows: Iterable<DeliverRow>,
+  year: number,
+  month: number,
+  rules: EtlRule[]
+): MonthResolution {
+  const byBase = new Map<string, DeliverRow[]>();
+  for (const row of rows) {
+    if (!row.ldtBase) continue;
+    const issued = parseIssueMonth(row.issueDate);
+    if (!issued || issued.year !== year || issued.month !== month) continue;
+    const list = byBase.get(row.ldtBase);
+    if (list) list.push(row);
+    else byBase.set(row.ldtBase, [row]);
+  }
+
+  const kept = new Map<string, DeliverRow>();
+  const excluded = { total: 0, byRule: {} as Record<string, number> };
+
+  for (const [base, list] of byBase) {
+    let representative: DeliverRow | null = null;
+    let firstCutLabel: string | null = null;
+    for (const row of list) {
+      const cutBy = applyRules(toRuleRecord(row), rules);
+      if (!cutBy) {
+        representative = row;
+        break;
+      }
+      firstCutLabel ??= cutBy.label;
+    }
+    if (representative) {
+      kept.set(base, representative);
+    } else {
+      excluded.total += 1;
+      const label = firstCutLabel ?? "(ไม่ระบุเงื่อนไข)";
+      excluded.byRule[label] = (excluded.byRule[label] ?? 0) + 1;
+    }
+  }
+
+  return { monthKey: monthKeyOf(year, month), uniqueLdt: byBase.size, kept, excluded };
+}
+
+// Trip = unique _ldt_base whose ออก LDT falls in the target month-year and has
+// at least one row surviving every cut rule.
 export function buildMonthTrips(
   rows: Iterable<DeliverRow>,
   year: number,
   month: number,
   rules: EtlRule[]
 ): MonthTripResult {
-  const seen = new Map<string, DeliverRow>();
-  for (const row of rows) {
-    if (!row.ldtBase) continue;
-    const issued = parseIssueMonth(row.issueDate);
-    if (!issued || issued.year !== year || issued.month !== month) continue;
-    if (!seen.has(row.ldtBase)) seen.set(row.ldtBase, row);
-  }
+  const { monthKey, uniqueLdt, kept, excluded } = resolveMonth(rows, year, month, rules);
 
-  const monthKey = monthKeyOf(year, month);
   const trips: TripDoc[] = [];
-  const excluded = { total: 0, byRule: {} as Record<string, number> };
-
-  for (const row of seen.values()) {
-    const cutBy = applyRules(toRuleRecord(row), rules);
-    if (cutBy) {
-      excluded.total += 1;
-      excluded.byRule[cutBy.label] = (excluded.byRule[cutBy.label] ?? 0) + 1;
-      continue;
-    }
+  for (const [base, row] of kept) {
     trips.push({
       monthKey,
       year,
       month,
       issueDate: row.issueDate,
       ldt: row.ldt,
-      ldtBase: row.ldtBase!,
+      ldtBase: base,
       service: (row.service ?? "").trim() || "(ไม่ระบุบริการ)",
       subcode: row.subcode,
       zone: row.zone,
@@ -121,7 +160,7 @@ export function buildMonthTrips(
     });
   }
 
-  return { monthKey, year, month, uniqueLdt: seen.size, trips, excluded };
+  return { monthKey, year, month, uniqueLdt, trips, excluded };
 }
 
 export interface MonthWeightResult {
@@ -143,31 +182,43 @@ function toNumber(v: number | string | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Master น้ำหนัก: same unit as trips (unique _ldt_base per ออก LDT month, first
-// row only) + resolved weight: น้ำหนักปลายทาง = 1 → ใช้น้ำหนักต้นทาง, otherwise
-// use น้ำหนักปลายทาง (null/0 counts as 0).
+// Master น้ำหนัก: same unit as trips (unique _ldt_base per ออก LDT month) +
+// resolved weight taken from the same representative row the trip uses:
+// น้ำหนักปลายทาง = 1 → ใช้น้ำหนักต้นทาง, otherwise use น้ำหนักปลายทาง
+// (null/0 counts as 0).
 export function buildMonthWeights(
-  rows: DeliverRow[], // array required — iterated twice
+  rows: DeliverRow[],
   year: number,
   month: number,
   rules: EtlRule[]
 ): MonthWeightResult {
-  const { monthKey, uniqueLdt, trips, excluded } = buildMonthTrips(rows, year, month, rules);
-  // buildMonthTrips keeps the first row per _ldt_base; re-read its weights
-  const byBase = new Map<string, DeliverRow>();
-  for (const row of rows) {
-    if (row.ldtBase && !byBase.has(row.ldtBase)) byBase.set(row.ldtBase, row);
-  }
+  const { monthKey, uniqueLdt, kept, excluded } = resolveMonth(rows, year, month, rules);
 
   let totalWeight = 0;
-  const docs: WeightDoc[] = trips.map((t) => {
-    const src = byBase.get(t.ldtBase);
-    const weightOrigin = toNumber(src?.weightOrigin ?? null);
-    const weightDest = toNumber(src?.weightDest ?? null);
+  const docs: WeightDoc[] = [];
+  for (const [base, row] of kept) {
+    const weightOrigin = toNumber(row.weightOrigin);
+    const weightDest = toNumber(row.weightDest);
     const weight = weightDest === 1 ? weightOrigin : weightDest;
     totalWeight += weight;
-    return { ...t, weightOrigin, weightDest, weight };
-  });
+    docs.push({
+      monthKey,
+      year,
+      month,
+      issueDate: row.issueDate,
+      ldt: row.ldt,
+      ldtBase: base,
+      service: (row.service ?? "").trim() || "(ไม่ระบุบริการ)",
+      subcode: row.subcode,
+      zone: row.zone,
+      branch: row.branch,
+      plateHead: row.plateHead,
+      plateTail: row.plateTail,
+      weightOrigin,
+      weightDest,
+      weight,
+    });
+  }
 
   return {
     monthKey,
