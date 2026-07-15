@@ -1,14 +1,16 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
+  Database,
   FlaskConical,
   Loader2,
   Plus,
   Save,
   SlidersHorizontal,
   Trash2,
+  Warehouse,
   X,
 } from "lucide-react"
 
@@ -41,6 +43,14 @@ type Preview = {
   excludedByRule: Record<string, number>
 }
 
+type FlowInfo = {
+  flowKey: string
+  name: string
+  description: string
+  sourceCollection: string
+  targetCollection: string
+}
+
 const OPERATOR_LABELS: Record<Rule["operator"], string> = {
   equals: "ตรงกับ",
   contains: "มีคำว่า",
@@ -56,9 +66,11 @@ function monthOptions(count = 24): string[] {
 }
 
 function ConditionsContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const flowKey = searchParams.get("flow") ?? "trip"
 
+  const [flows, setFlows] = useState<FlowInfo[]>([])
   const [doc, setDoc] = useState<RuleDoc | null>(null)
   const [rules, setRules] = useState<Rule[]>([])
   const [dirty, setDirty] = useState(false)
@@ -87,6 +99,24 @@ function ConditionsContent() {
   useEffect(() => {
     load()
   }, [load])
+
+  // Flow list for the selector — every flow has its own independent rule set
+  useEffect(() => {
+    fetch("/api/etl/flows")
+      .then(async (r) => {
+        const json = await r.json()
+        if (r.ok) setFlows(json.data)
+      })
+      .catch(() => {})
+  }, [])
+
+  function switchFlow(key: string) {
+    if (key === flowKey) return
+    if (dirty && !window.confirm("มีการแก้ไขที่ยังไม่บันทึก — ออกจาก flow นี้เลยไหม?")) return
+    setPreview(null)
+    setNotice(null)
+    router.push(`/datapipeline/conditions?flow=${key}`)
+  }
 
   function mutate(next: Rule[]) {
     setRules(next)
@@ -175,6 +205,35 @@ function ConditionsContent() {
 
   return (
     <>
+      {/* Flow selector — each flow keeps its own rule set */}
+      {flows.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {flows.map((f) => {
+            const active = f.flowKey === flowKey
+            return (
+              <button
+                key={f.flowKey}
+                onClick={() => switchFlow(f.flowKey)}
+                title={f.description}
+                className={`flex min-w-[190px] flex-col items-start rounded-xl border px-3 py-2 text-left transition-colors
+                  ${active
+                    ? "border-violet-400 bg-violet-50 dark:bg-violet-950/40"
+                    : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-violet-300"}`}
+              >
+                <span className={`text-[13px] font-bold ${active ? "text-violet-700 dark:text-violet-300" : "text-gray-800 dark:text-gray-200"}`}>
+                  {f.name}
+                </span>
+                <span className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+                  <Database size={9} /> {f.sourceCollection}
+                  <span className="text-gray-300 dark:text-gray-600">→</span>
+                  <Warehouse size={9} /> {f.targetCollection}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Header row */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="rounded-lg bg-violet-100 dark:bg-violet-950/50 px-2.5 py-1 text-[12px] font-semibold
