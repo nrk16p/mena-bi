@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Warehouse } from "lucide-react"
+import * as XLSX from "xlsx"
+import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Warehouse } from "lucide-react"
 
 type ApiData = {
   flow: { flowKey: string; name: string; description: string; targetCollection: string }
@@ -43,6 +44,7 @@ function DataContent() {
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -88,6 +90,30 @@ function DataContent() {
       setError(e instanceof Error ? e.message : "คำนวณไม่สำเร็จ")
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function exportExcel() {
+    if (!data) return
+    setExporting(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ flowKey, monthKey, all: "1" })
+      const res = await fetch(`/api/etl/data?${params}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
+      const cols: string[] = json.data.columns
+      const rows = (json.data.rows as Array<Record<string, unknown>>).map((r) =>
+        Object.fromEntries(cols.map((c) => [c, r[c] ?? ""]))
+      )
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "data")
+      XLSX.writeFile(wb, `${data.flow.targetCollection}-${monthKey}.xlsx`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -137,6 +163,17 @@ function DataContent() {
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {running ? "กำลังคำนวณ..." : "คำนวณใหม่ (ETL)"}
+        </button>
+
+        <button
+          onClick={exportExcel}
+          disabled={exporting || loading || !data || data.total === 0}
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-white/10 px-3
+            text-[13px] font-medium text-gray-600 dark:text-gray-300 disabled:opacity-40
+            hover:bg-gray-50 dark:hover:bg-white/6 transition-colors"
+        >
+          {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          Export Excel
         </button>
 
         <div className="ml-auto flex items-center gap-3 text-[12px] text-gray-400 dark:text-gray-500">

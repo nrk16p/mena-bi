@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Truck } from "lucide-react"
+import * as XLSX from "xlsx"
+import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Truck } from "lucide-react"
 
 type TripRow = {
   monthKey: string
@@ -55,6 +56,7 @@ export default function TripPage() {
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
   const [running, setRunning] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -99,6 +101,29 @@ export default function TripPage() {
       setError(e instanceof Error ? e.message : "คำนวณไม่สำเร็จ")
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function exportExcel() {
+    setExporting(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ monthKey, all: "1" })
+      if (service) params.set("service", service)
+      const res = await fetch(`/api/trip-data?${params}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
+      const rows = (json.data.rows as TripRow[]).map((r) =>
+        Object.fromEntries(COLUMNS.map((c) => [c.label, r[c.key] ?? ""]))
+      )
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "tripData")
+      XLSX.writeFile(wb, `tripData-${monthKey}${service ? "-filtered" : ""}.xlsx`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -155,6 +180,17 @@ export default function TripPage() {
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {running ? "กำลังคำนวณ..." : "คำนวณใหม่ (ETL)"}
+        </button>
+
+        <button
+          onClick={exportExcel}
+          disabled={exporting || loading || !data || data.total === 0}
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-white/10 px-3
+            text-[13px] font-medium text-gray-600 dark:text-gray-300 disabled:opacity-40
+            hover:bg-gray-50 dark:hover:bg-white/6 transition-colors"
+        >
+          {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          Export Excel
         </button>
 
         <div className="ml-auto flex items-center gap-3 text-[12px] text-gray-400 dark:text-gray-500">

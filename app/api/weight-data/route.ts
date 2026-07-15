@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const page = Math.max(Number(searchParams.get("page") ?? 1) || 1, 1)
   const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") ?? 50) || 50, 10), 200)
   const service = searchParams.get("service")
+  const wantAll = searchParams.get("all") === "1" // export: full month slice
 
   const monthFilter = { monthKey }
   const filter = service ? { ...monthFilter, service } : monthFilter
@@ -40,8 +41,8 @@ export async function GET(req: NextRequest) {
     col
       .find(filter, { projection: { _id: 0 } })
       .sort({ service: 1, ldtBase: 1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
+      .skip(wantAll ? 0 : (page - 1) * pageSize)
+      .limit(wantAll ? 100000 : pageSize)
       .toArray(),
     db
       .collection(RUNS_COLLECTION)

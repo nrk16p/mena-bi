@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
   }
   const page = Math.max(Number(searchParams.get("page") ?? 1) || 1, 1)
   const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") ?? 50) || 50, 10), 200)
+  const wantAll = searchParams.get("all") === "1" // export: full month slice
 
   const client = await clientPromise
   const db = client.db(DELIVER_DB)
@@ -37,8 +38,8 @@ export async function GET(req: NextRequest) {
     col.countDocuments({ monthKey }),
     col
       .find({ monthKey }, { projection: { _id: 0 } })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
+      .skip(wantAll ? 0 : (page - 1) * pageSize)
+      .limit(wantAll ? 100000 : pageSize)
       .toArray(),
   ])
 
