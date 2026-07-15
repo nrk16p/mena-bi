@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import * as XLSX from "xlsx"
-import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Scale } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Scale, Search, X } from "lucide-react"
 
 type WeightRow = {
   monthKey: string
@@ -25,6 +25,8 @@ type ApiData = {
   page: number
   pageSize: number
   services: string[]
+  branches: string[]
+  zones: string[]
   totalWeight: number | null
   computedAt: string | null
   rulesVersion: number | null
@@ -62,6 +64,10 @@ export default function WeightPage() {
   // Default to the previous month — the last complete one
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
   const [service, setService] = useState("")
+  const [branch, setBranch] = useState("")
+  const [zone, setZone] = useState("")
+  const [q, setQ] = useState("")
+  const [qDraft, setQDraft] = useState("")
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -79,6 +85,9 @@ export default function WeightPage() {
         pageSize: String(PAGE_SIZE),
       })
       if (service) params.set("service", service)
+      if (branch) params.set("branch", branch)
+      if (zone) params.set("zone", zone)
+      if (q) params.set("q", q)
       const res = await fetch(`/api/weight-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
@@ -88,7 +97,7 @@ export default function WeightPage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, service, page])
+  }, [monthKey, service, branch, zone, q, page])
 
   useEffect(() => {
     load()
@@ -114,12 +123,17 @@ export default function WeightPage() {
     }
   }
 
+  const hasFilter = !!(service || branch || zone || q)
+
   async function exportExcel() {
     setExporting(true)
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, all: "1" })
       if (service) params.set("service", service)
+      if (branch) params.set("branch", branch)
+      if (zone) params.set("zone", zone)
+      if (q) params.set("q", q)
       const res = await fetch(`/api/weight-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
@@ -129,7 +143,7 @@ export default function WeightPage() {
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, "weightData")
-      XLSX.writeFile(wb, `weightData-${monthKey}${service ? "-filtered" : ""}.xlsx`)
+      XLSX.writeFile(wb, `weightData-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
     } finally {
@@ -138,7 +152,7 @@ export default function WeightPage() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / data.pageSize), 1) : 1
-  const isEmpty = data !== null && data.total === 0 && !service
+  const isEmpty = data !== null && data.total === 0 && !hasFilter
 
   return (
     <div className="max-w-full">
@@ -159,7 +173,11 @@ export default function WeightPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select
           value={monthKey}
-          onChange={(e) => { setMonthKey(e.target.value); setService(""); setPage(1) }}
+          onChange={(e) => {
+            setMonthKey(e.target.value)
+            setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
+            setPage(1)
+          }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
             px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
         >
@@ -179,6 +197,50 @@ export default function WeightPage() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+
+        <select
+          value={branch}
+          onChange={(e) => { setBranch(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+        >
+          <option value="">ทุกสาขา</option>
+          {(data?.branches ?? []).map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+
+        <select
+          value={zone}
+          onChange={(e) => { setZone(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+        >
+          <option value="">ทุกโซน</option>
+          {(data?.zones ?? []).map((z) => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
+            placeholder="ค้นหา LDT / subcode / ทะเบียน..."
+            className="h-9 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+          />
+          {q && (
+            <button
+              onClick={() => { setQ(""); setQDraft(""); setPage(1) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
 
         <button
           onClick={runEtl}

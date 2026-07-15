@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import * as XLSX from "xlsx"
-import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Truck } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Search, Truck, X } from "lucide-react"
 
 type TripRow = {
   monthKey: string
@@ -24,6 +24,8 @@ type ApiData = {
   page: number
   pageSize: number
   services: string[]
+  branches: string[]
+  zones: string[]
   computedAt: string | null
 }
 
@@ -52,6 +54,10 @@ export default function TripPage() {
   // Default to the previous month — the last complete one
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
   const [service, setService] = useState("")
+  const [branch, setBranch] = useState("")
+  const [zone, setZone] = useState("")
+  const [q, setQ] = useState("")
+  const [qDraft, setQDraft] = useState("")
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -69,6 +75,9 @@ export default function TripPage() {
         pageSize: String(PAGE_SIZE),
       })
       if (service) params.set("service", service)
+      if (branch) params.set("branch", branch)
+      if (zone) params.set("zone", zone)
+      if (q) params.set("q", q)
       const res = await fetch(`/api/trip-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
@@ -78,7 +87,7 @@ export default function TripPage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, service, page])
+  }, [monthKey, service, branch, zone, q, page])
 
   useEffect(() => {
     load()
@@ -110,6 +119,9 @@ export default function TripPage() {
     try {
       const params = new URLSearchParams({ monthKey, all: "1" })
       if (service) params.set("service", service)
+      if (branch) params.set("branch", branch)
+      if (zone) params.set("zone", zone)
+      if (q) params.set("q", q)
       const res = await fetch(`/api/trip-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
@@ -128,7 +140,8 @@ export default function TripPage() {
   }
 
   const totalPages = data ? Math.max(Math.ceil(data.total / data.pageSize), 1) : 1
-  const isEmpty = data !== null && data.total === 0 && !service
+  const hasFilter = !!(service || branch || zone || q)
+  const isEmpty = data !== null && data.total === 0 && !hasFilter
 
   return (
     <div className="max-w-full">
@@ -149,7 +162,11 @@ export default function TripPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select
           value={monthKey}
-          onChange={(e) => { setMonthKey(e.target.value); setService(""); setPage(1) }}
+          onChange={(e) => {
+            setMonthKey(e.target.value)
+            setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
+            setPage(1)
+          }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
             px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
         >
@@ -169,6 +186,50 @@ export default function TripPage() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+
+        <select
+          value={branch}
+          onChange={(e) => { setBranch(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+        >
+          <option value="">ทุกสาขา</option>
+          {(data?.branches ?? []).map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+
+        <select
+          value={zone}
+          onChange={(e) => { setZone(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+        >
+          <option value="">ทุกโซน</option>
+          {(data?.zones ?? []).map((z) => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
+            placeholder="ค้นหา LDT / subcode / ทะเบียน..."
+            className="h-9 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+          />
+          {q && (
+            <button
+              onClick={() => { setQ(""); setQDraft(""); setPage(1) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
 
         <button
           onClick={runEtl}

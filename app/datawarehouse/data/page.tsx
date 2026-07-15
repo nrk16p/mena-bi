@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
-import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Warehouse } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Search, Warehouse, X } from "lucide-react"
 
 type ApiData = {
   flow: { flowKey: string; name: string; description: string; targetCollection: string }
@@ -40,6 +40,8 @@ function DataContent() {
   const flowKey = searchParams.get("flow") ?? ""
 
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
+  const [q, setQ] = useState("")
+  const [qDraft, setQDraft] = useState("")
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -58,6 +60,7 @@ function DataContent() {
         page: String(page),
         pageSize: String(PAGE_SIZE),
       })
+      if (q) params.set("q", q)
       const res = await fetch(`/api/etl/data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
@@ -67,7 +70,7 @@ function DataContent() {
     } finally {
       setLoading(false)
     }
-  }, [flowKey, monthKey, page])
+  }, [flowKey, monthKey, q, page])
 
   useEffect(() => {
     load()
@@ -99,6 +102,7 @@ function DataContent() {
     setError(null)
     try {
       const params = new URLSearchParams({ flowKey, monthKey, all: "1" })
+      if (q) params.set("q", q)
       const res = await fetch(`/api/etl/data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
@@ -144,7 +148,7 @@ function DataContent() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select
           value={monthKey}
-          onChange={(e) => { setMonthKey(e.target.value); setPage(1) }}
+          onChange={(e) => { setMonthKey(e.target.value); setQ(""); setQDraft(""); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
             px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
         >
@@ -152,6 +156,26 @@ function DataContent() {
             <option key={mk} value={mk}>{mk}</option>
           ))}
         </select>
+
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
+            placeholder="ค้นหาทุกคอลัมน์..."
+            className="h-9 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+          />
+          {q && (
+            <button
+              onClick={() => { setQ(""); setQDraft(""); setPage(1) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
 
         <button
           onClick={runEtl}

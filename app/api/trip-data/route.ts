@@ -24,17 +24,29 @@ export async function GET(req: NextRequest) {
   const page = Math.max(Number(searchParams.get("page") ?? 1) || 1, 1)
   const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") ?? 50) || 50, 10), 200)
   const service = searchParams.get("service")
+  const branch = searchParams.get("branch")
+  const zone = searchParams.get("zone")
+  const q = (searchParams.get("q") ?? "").trim()
   const wantAll = searchParams.get("all") === "1" // export: full month slice
 
   const monthFilter = { monthKey }
-  const filter = service ? { ...monthFilter, service } : monthFilter
+  const filter: Record<string, unknown> = { ...monthFilter }
+  if (service) filter.service = service
+  if (branch) filter.branch = branch
+  if (zone) filter.zone = zone
+  if (q) {
+    const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
+    filter.$or = [{ ldt: re }, { ldtBase: re }, { subcode: re }, { plateHead: re }, { plateTail: re }]
+  }
 
   const client = await clientPromise
   const col = client.db(DELIVER_DB).collection(TRIP_DATA_COLLECTION)
 
-  const [total, services, rows] = await Promise.all([
+  const [total, services, branches, zones, rows] = await Promise.all([
     col.countDocuments(filter),
     col.distinct("service", monthFilter),
+    col.distinct("branch", monthFilter),
+    col.distinct("zone", monthFilter),
     col
       .find(filter, { projection: { _id: 0 } })
       .sort({ service: 1, ldtBase: 1 })
@@ -51,6 +63,8 @@ export async function GET(req: NextRequest) {
       page,
       pageSize,
       services: services.sort(),
+      branches: (branches as Array<string | null>).filter(Boolean).sort(),
+      zones: (zones as Array<string | null>).filter(Boolean).sort(),
       computedAt: rows[0]?.computedAt ?? null,
     },
   })

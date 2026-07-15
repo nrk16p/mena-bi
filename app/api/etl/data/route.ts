@@ -33,11 +33,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unknown dynamic flow" }, { status: 400 })
   }
 
+  const q = (searchParams.get("q") ?? "").trim()
+  const filter: Record<string, unknown> = { monthKey }
+  if (q) {
+    const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
+    filter.$or = flow.columns.map((c) => ({ [c]: re }))
+  }
+
   const col = db.collection(flow.targetCollection)
   const [total, rows] = await Promise.all([
-    col.countDocuments({ monthKey }),
+    col.countDocuments(filter),
     col
-      .find({ monthKey }, { projection: { _id: 0 } })
+      .find(filter, { projection: { _id: 0 } })
       .skip(wantAll ? 0 : (page - 1) * pageSize)
       .limit(wantAll ? 100000 : pageSize)
       .toArray(),
