@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     col.distinct("YM"),
     col
       .find(filter, { projection: { _id: 0 } })
-      .sort({ YM: -1, ทะเบียนรถ: 1 })
+      .sort({ YM: -1, ศูนย์: 1, บริการ: 1, ทะเบียนรถ: 1 })
       .skip(wantAll ? 0 : (page - 1) * pageSize)
       .limit(wantAll ? MAX_IMPORT_ROWS : pageSize)
       .toArray(),
@@ -120,8 +120,13 @@ export async function POST(req: NextRequest) {
   const byYm = new Map<number, Array<Record<string, unknown>>>()
   for (const raw of body.rows) {
     if (raw == null || typeof raw !== "object") continue
-    const { _id, ...row } = raw as Record<string, unknown> & { _id?: unknown }
-    void _id
+    const row: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      const key = k.trim()
+      if (!key || key === "_id" || key.startsWith("__EMPTY") || key.startsWith("_imported")) continue
+      row[key] = typeof v === "string" ? v.trim() : v
+    }
+    if (!row["ทะเบียนรถ"]) continue
     const ym = resolveYm(row["YM"], fallbackYm)
     row["YM"] = ym
     let list = byYm.get(ym)

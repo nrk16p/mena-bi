@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FileSpreadsheet,
   Loader2,
   Search,
   Truck,
@@ -85,6 +86,17 @@ export default function MasterTruckPage() {
     }
   }
 
+  function downloadTemplate() {
+    const example: Record<string, string | number> = Object.fromEntries(COLUMNS.map((c) => [c, ""]))
+    example["YM"] = 202605
+    example["ศูนย์"] = "สระบุรี"
+    example["ทะเบียนรถ"] = "สบ.00-0000"
+    const ws = XLSX.utils.json_to_sheet([example], { header: COLUMNS })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "mastertruck")
+    XLSX.writeFile(wb, "mastertruck-template.xlsx")
+  }
+
   async function importExcel(file: File) {
     setBusy("import")
     setError(null)
@@ -93,15 +105,38 @@ export default function MasterTruckPage() {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf)
       const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
-      if (rows.length === 0) throw new Error("file ว่าง — ไม่มีข้อมูล")
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
 
+      // Clean: trim headers/values, drop unnamed (__EMPTY) columns, drop blank rows
+      let skipped = 0
+      const rows = raw
+        .map((r) => {
+          const clean: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(r)) {
+            const key = k.trim()
+            if (!key || key.startsWith("__EMPTY")) continue
+            clean[key] = typeof v === "string" ? v.trim() : v
+          }
+          return clean
+        })
+        .filter((r) => {
+          const hasData = Object.values(r).some((v) => v != null && v !== "")
+          const hasPlate = r["ทะเบียนรถ"] != null && r["ทะเบียนรถ"] !== ""
+          if (hasData && !hasPlate) skipped += 1
+          return hasData && hasPlate
+        })
+      if (rows.length === 0) throw new Error("ไม่พบแถวที่มี ทะเบียนรถ ใน file — ตรวจหัวคอลัมน์ให้ตรง template")
+
+      const detected = Object.keys(rows[0])
+      const unknown = detected.filter((k) => !COLUMNS.includes(k) && k !== "YM")
       const fallback = monthKey === "all" ? currentMonthKey() : monthKey
       const months = [...new Set(rows.map((r) => String(r["YM"] ?? fallback)))]
       const ok = window.confirm(
-        `Import ${rows.length.toLocaleString()} แถว\n` +
-          `เดือนที่พบใน file: ${months.join(", ")}\n\n` +
-          `⚠️ ข้อมูลเดิมของเดือนเหล่านั้นจะถูกแทนที่ทั้งหมด — ยืนยัน?`
+        `Import ${rows.length.toLocaleString()} แถว` +
+          (skipped ? ` (ข้าม ${skipped} แถวที่ไม่มีทะเบียนรถ)` : "") +
+          `\nเดือนที่พบใน file: ${months.join(", ")}` +
+          (unknown.length ? `\nคอลัมน์นอก template (จะเก็บด้วย): ${unknown.join(", ")}` : "") +
+          `\n\n⚠️ ข้อมูลเดิมของเดือนเหล่านั้นจะถูกแทนที่ทั้งหมด — ยืนยัน?`
       )
       if (!ok) return
 
@@ -115,7 +150,7 @@ export default function MasterTruckPage() {
       const summary = (json.data as Array<{ monthKey: string; removed: number; inserted: number }>)
         .map((r) => `${r.monthKey}: ลบ ${r.removed} → เพิ่ม ${r.inserted}`)
         .join(" · ")
-      setNotice(`Import สำเร็จ — ${summary}`)
+      setNotice(`Import สำเร็จ — ${summary}${skipped ? ` (ข้าม ${skipped} แถว)` : ""}`)
       setPage(1)
       await load()
     } catch (e) {
@@ -175,6 +210,15 @@ export default function MasterTruckPage() {
               {data.total.toLocaleString()} แถว
             </span>
           )}
+          <button
+            onClick={downloadTemplate}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-white/10 px-3
+              text-[13px] font-medium text-gray-600 dark:text-gray-300
+              hover:bg-gray-50 dark:hover:bg-white/6 transition-colors"
+          >
+            <FileSpreadsheet size={14} />
+            Template
+          </button>
           <button
             onClick={exportExcel}
             disabled={busy !== null || !data || data.total === 0}
