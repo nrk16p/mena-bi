@@ -12,7 +12,7 @@ import {
   Workflow,
 } from "lucide-react"
 
-type MonthStat = { monthKey: string; rows: number }
+type MonthStat = { monthKey: string; rows: number; metric?: number | null }
 
 type RunStat = {
   monthKey: string
@@ -22,6 +22,8 @@ type RunStat = {
   triggeredBy: string
   finishedAt: string
   durationMs: number
+  /** flow-specific metrics, e.g. totalWeight */
+  [key: string]: unknown
 }
 
 type FlowOverview = {
@@ -38,7 +40,14 @@ type FlowOverview = {
     updatedBy: string | null
     lastRuns: RunStat[]
   }
-  target: { collection: string; href: string; monthsLoaded: number; months: MonthStat[] }
+  target: {
+    collection: string
+    href: string
+    monthsLoaded: number
+    months: MonthStat[]
+    unit: string
+    metric: { runField: string; label: string; unit: string } | null
+  }
 }
 
 function fmtDate(s: string | null): string {
@@ -217,10 +226,18 @@ export default function FlowsPage() {
               tone="amber"
               href={flow.target.href}
             >
-              <StatLine label="เดือนที่โหลดแล้ว" value={`${flow.target.monthsLoaded} เดือน`} />
-              {flow.target.months.slice(0, 3).map((m) => (
-                <StatLine key={m.monthKey} label={m.monthKey} value={`${m.rows.toLocaleString()} เที่ยว`} />
-              ))}
+              <StatLine
+                label={flow.target.metric ? `เดือนที่โหลด · ${flow.target.metric.label}` : "เดือนที่โหลดแล้ว"}
+                value={`${flow.target.monthsLoaded} เดือน`}
+              />
+              {flow.target.months.slice(0, 3).map((m) => {
+                const metric = flow.target.metric
+                const value =
+                  metric && m.metric != null
+                    ? `${m.metric.toLocaleString()} ${metric.unit}`.trim()
+                    : `${m.rows.toLocaleString()} ${flow.target.unit}`
+                return <StatLine key={m.monthKey} label={m.monthKey} value={value} />
+              })}
             </PillarCard>
           </div>
 
@@ -230,7 +247,16 @@ export default function FlowsPage() {
               <table className="w-full text-[12px] whitespace-nowrap">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-white/8 bg-gray-50 dark:bg-white/4">
-                    {["เดือน", "rules", "เที่ยว", "ตัดออก", "โดย", "เมื่อ", "ใช้เวลา"].map((h) => (
+                    {[
+                      "เดือน",
+                      "rules",
+                      flow.target.unit,
+                      ...(flow.target.metric ? [flow.target.metric.label] : []),
+                      "ตัดออก",
+                      "โดย",
+                      "เมื่อ",
+                      "ใช้เวลา",
+                    ].map((h) => (
                       <th key={h} className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">
                         {h}
                       </th>
@@ -245,6 +271,13 @@ export default function FlowsPage() {
                       <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
                         {run.trips.toLocaleString()}
                       </td>
+                      {flow.target.metric && (
+                        <td className="px-3 py-2 tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
+                          {typeof run[flow.target.metric.runField] === "number"
+                            ? (run[flow.target.metric.runField] as number).toLocaleString()
+                            : "-"}
+                        </td>
+                      )}
                       <td className="px-3 py-2 tabular-nums text-red-500 dark:text-red-400">
                         {run.excluded.toLocaleString()}
                       </td>

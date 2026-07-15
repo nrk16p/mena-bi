@@ -58,10 +58,24 @@ export async function GET() {
         .sort()
         .reverse()
         .slice(0, 6)
-        .map(async (mk) => ({
-          monthKey: mk as string,
-          rows: await targetCol.countDocuments({ monthKey: mk }),
-        }))
+        .map(async (mk) => {
+          const monthKey = mk as string
+          // Headline metric (e.g. น้ำหนักรวม) is computed at ETL time and logged
+          const run = flow.metric
+            ? await db
+                .collection(RUNS_COLLECTION)
+                .find({ flowKey: flow.flowKey, monthKey })
+                .sort({ finishedAt: -1 })
+                .limit(1)
+                .toArray()
+            : []
+          const metricValue = flow.metric ? (run[0]?.[flow.metric.runField] as number | undefined) : undefined
+          return {
+            monthKey,
+            rows: await targetCol.countDocuments({ monthKey }),
+            metric: metricValue ?? null,
+          }
+        })
     )
 
     flows.push({
@@ -88,6 +102,8 @@ export async function GET() {
         href: flow.targetHref,
         monthsLoaded: targetMonthKeys.length,
         months: targetMonths,
+        unit: flow.unit,
+        metric: flow.metric,
       },
     })
   }

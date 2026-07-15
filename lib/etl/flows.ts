@@ -27,6 +27,10 @@ export interface FlowConfig {
   conditionsHref: string
   targetHref: string
   dynamic: boolean
+  /** What one row in the target collection means, e.g. "เที่ยว" */
+  unit: string
+  /** Headline number for the Data pillar: a numeric field logged on each etl_runs entry */
+  metric: { runField: string; label: string; unit: string } | null
   // generic-executor config (dynamic flows only)
   monthField: string | null // date field (DD/MM/YYYY) for month attribution; null = file month
   dedupeField: string | null // unique-key field; null = keep every row
@@ -59,6 +63,8 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     conditionsHref: "/datapipeline/conditions?flow=trip",
     targetHref: "/datawarehouse/trip",
     dynamic: false,
+    unit: "เที่ยว",
+    metric: null,
     monthField: "ออก LDT",
     dedupeField: "_ldt_base",
     columns: [],
@@ -75,6 +81,8 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     conditionsHref: "/datapipeline/conditions?flow=weight",
     targetHref: "/datawarehouse/weight",
     dynamic: false,
+    unit: "เที่ยว",
+    metric: { runField: "totalWeight", label: "น้ำหนักรวม", unit: "" },
     monthField: "ออก LDT",
     dedupeField: "_ldt_base",
     columns: [],
@@ -94,6 +102,8 @@ export function toFlowConfig(d: DynamicFlowDoc): FlowConfig {
     conditionsHref: `/datapipeline/conditions?flow=${d.flowKey}`,
     targetHref: `/datawarehouse/data?flow=${d.flowKey}`,
     dynamic: true,
+    unit: "แถว",
+    metric: null,
     monthField: d.monthField,
     dedupeField: d.dedupeField,
     columns: d.columns,
