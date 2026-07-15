@@ -1,4 +1,4 @@
-import { applyRules, type EtlRule, type RuleRecord } from "../etl/engine";
+import { applyRules, resolveRow, type EtlRule, type RuleRecord } from "../etl/engine";
 
 // One row from mena-bi.deliverResult, projected to the fields the ETL needs.
 export interface DeliverRow {
@@ -12,6 +12,7 @@ export interface DeliverRow {
   plateTail: string | null; // หาง — trailer registration
   weightOrigin: number | string | null; // น้ำหนักต้นทาง
   weightDest: number | string | null; // น้ำหนักปลายทาง
+  amount: number | string | null; // ค่าจัดส่ง
   issueDate: string | Date | null; // ออก LDT — "DD/MM/YYYY" string or Date
 }
 
@@ -163,6 +164,37 @@ export function buildMonthTrips(
   return { monthKey, year, month, uniqueLdt, trips, excluded };
 }
 
+// One charge row stored raw in mena-bi.transportCost
+export interface CostDoc {
+  monthKey: string;
+  year: number;
+  month: number;
+  issueDate: string | Date | null;
+  ldt: string | null;
+  service: string;
+  subcode: string | null;
+  zone: string | null;
+  branch: string | null;
+  plateHead: string | null;
+  amount: number; // ค่าจัดส่ง
+  category: string; // ประเภทรายได้
+}
+
+export interface MonthCostResult {
+  monthKey: string;
+  year: number;
+  month: number;
+  rowsInMonth: number;
+  docs: CostDoc[];
+  totalAmount: number;
+  byCategory: Record<string, { rows: number; amount: number }>;
+  excluded: {
+    total: number;
+    amount: number;
+    byRule: Record<string, number>;
+  };
+}
+
 export interface MonthWeightResult {
   monthKey: string;
   year: number;
@@ -228,5 +260,73 @@ export function buildMonthWeights(
     docs,
     totalWeight: Math.round(totalWeight * 100) / 100,
     excluded,
+  };
+}
+
+// Master ค่าขนส่ง: money is counted PER ROW (no dedupe — every row is its own
+// charge). Rules run in order: a cut rule drops the row, a classify rule files
+// it under its category, anything else falls to defaultCategory.
+export function buildMonthCosts(
+  rows: Iterable<DeliverRow>,
+  year: number,
+  month: number,
+  rules: EtlRule[],
+  defaultCategory: string
+): MonthCostResult {
+  const monthKey = monthKeyOf(year, month);
+  const docs: CostDoc[] = [];
+  const byCategory: Record<string, { rows: number; amount: number }> = {};
+  const excluded = { total: 0, amount: 0, byRule: {} as Record<string, number> };
+  let rowsInMonth = 0;
+  let totalAmount = 0;
+
+  for (const row of rows) {
+    const issued = parseIssueMonth(row.issueDate);
+    if (!issued || issued.year !== year || issued.month !== month) continue;
+    rowsInMonth += 1;
+
+    const amount = toNumber(row.amount);
+    const { cutBy, category } = resolveRow(toRuleRecord(row), rules, defaultCategory);
+    if (cutBy) {
+      excluded.total += 1;
+      excluded.amount += amount;
+      excluded.byRule[cutBy.label] = (excluded.byRule[cutBy.label] ?? 0) + 1;
+      continue;
+    }
+
+    const cat = category ?? defaultCategory;
+    totalAmount += amount;
+    const bucket = (byCategory[cat] ??= { rows: 0, amount: 0 });
+    bucket.rows += 1;
+    bucket.amount += amount;
+
+    docs.push({
+      monthKey,
+      year,
+      month,
+      issueDate: row.issueDate,
+      ldt: row.ldt,
+      service: (row.service ?? "").trim() || "(ไม่ระบุบริการ)",
+      subcode: row.subcode,
+      zone: row.zone,
+      branch: row.branch,
+      plateHead: row.plateHead,
+      amount,
+      category: cat,
+    });
+  }
+
+  const round = (n: number) => Math.round(n * 100) / 100;
+  for (const b of Object.values(byCategory)) b.amount = round(b.amount);
+
+  return {
+    monthKey,
+    year,
+    month,
+    rowsInMonth,
+    docs,
+    totalAmount: round(totalAmount),
+    byCategory,
+    excluded: { ...excluded, amount: round(excluded.amount) },
   };
 }

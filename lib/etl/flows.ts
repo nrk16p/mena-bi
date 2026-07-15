@@ -31,6 +31,9 @@ export interface FlowConfig {
   unit: string
   /** Headline number for the Data pillar: a numeric field logged on each etl_runs entry */
   metric: { runField: string; label: string; unit: string } | null
+  /** Flows that classify rows into buckets (rest fall into defaultCategory) */
+  categories: string[]
+  defaultCategory: string | null
   // generic-executor config (dynamic flows only)
   monthField: string | null // date field (DD/MM/YYYY) for month attribution; null = file month
   dedupeField: string | null // unique-key field; null = keep every row
@@ -65,6 +68,8 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     dynamic: false,
     unit: "เที่ยว",
     metric: null,
+    categories: [],
+    defaultCategory: null,
     monthField: "ออก LDT",
     dedupeField: "_ldt_base",
     columns: [],
@@ -83,8 +88,31 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     dynamic: false,
     unit: "เที่ยว",
     metric: { runField: "totalWeight", label: "น้ำหนักรวม", unit: "" },
+    categories: [],
+    defaultCategory: null,
     monthField: "ออก LDT",
     dedupeField: "_ldt_base",
+    columns: [],
+  },
+  "transport-cost": {
+    flowKey: "transport-cost",
+    name: "Master ค่าขนส่ง",
+    description: "รายงานผลการจัดส่ง → ตัดรายการที่ไม่นับ → แยกประเภทรายได้ (ค่าจัดส่งรายแถว)",
+    sourceCollection: "deliverResult",
+    sourcePipeline: "deliver_result",
+    targetCollection: "transportCost",
+    ruleFields: ["บริการ", "โซน", "subcode", "LDT", "สาขา"],
+    sourceHref: "/datapipeline/datasource",
+    conditionsHref: "/datapipeline/conditions?flow=transport-cost",
+    targetHref: "/datawarehouse/transport-cost",
+    dynamic: false,
+    unit: "แถว",
+    metric: { runField: "totalAmount", label: "ค่าจัดส่งรวม", unit: "บาท" },
+    categories: ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"],
+    defaultCategory: "ค่าขนส่ง",
+    // money is per-row: every row is its own charge, so no dedupe
+    monthField: "ออก LDT",
+    dedupeField: null,
     columns: [],
   },
 }
@@ -104,6 +132,8 @@ export function toFlowConfig(d: DynamicFlowDoc): FlowConfig {
     dynamic: true,
     unit: "แถว",
     metric: null,
+    categories: [],
+    defaultCategory: null,
     monthField: d.monthField,
     dedupeField: d.dedupeField,
     columns: d.columns,

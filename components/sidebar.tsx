@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   Scale,
   FolderCog,
+  Banknote,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -101,6 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/datawarehouse/trip", label: "Trip", icon: Truck },
       { href: "/datawarehouse/weight", label: "Master น้ำหนัก", icon: Scale },
+      { href: "/datawarehouse/transport-cost", label: "Master ค่าขนส่ง", icon: Banknote },
     ],
   },
   {

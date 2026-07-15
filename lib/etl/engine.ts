@@ -3,6 +3,9 @@
 
 export type RuleOperator = "equals" | "contains" | "contains_word"
 
+/** "exclude" cuts the row; "classify" files it under `category`. Missing = exclude. */
+export type RuleAction = "exclude" | "classify"
+
 export interface EtlRule {
   id: string
   label: string // shown in UI + used as the cut reason
@@ -10,6 +13,8 @@ export interface EtlRule {
   operator: RuleOperator
   values: string[]
   enabled: boolean
+  action?: RuleAction
+  category?: string // when action === "classify"
 }
 
 export interface EtlRuleDoc {
@@ -45,13 +50,31 @@ export function matchRule(record: RuleRecord, rule: EtlRule): boolean {
   })
 }
 
-// Returns the first enabled rule that cuts the record, or null to keep it.
+// Returns the first enabled cut rule that matches the record, or null to keep it.
+// Classify rules are ignored here — flows that only filter never see them.
 export function applyRules(record: RuleRecord, rules: EtlRule[]): EtlRule | null {
   for (const rule of rules) {
     if (!rule.enabled) continue
+    if ((rule.action ?? "exclude") !== "exclude") continue
     if (matchRule(record, rule)) return rule
   }
   return null
+}
+
+// Walks rules in order: the first match decides. A cut rule drops the row; a
+// classify rule files it under its category. No match → defaultCategory.
+export function resolveRow(
+  record: RuleRecord,
+  rules: EtlRule[],
+  defaultCategory: string
+): { cutBy: EtlRule | null; category: string | null } {
+  for (const rule of rules) {
+    if (!rule.enabled) continue
+    if (!matchRule(record, rule)) continue
+    if ((rule.action ?? "exclude") === "exclude") return { cutBy: rule, category: null }
+    return { cutBy: null, category: rule.category || defaultCategory }
+  }
+  return { cutBy: null, category: defaultCategory }
 }
 
 export function validateRules(rules: unknown): rules is EtlRule[] {
@@ -66,6 +89,8 @@ export function validateRules(rules: unknown): rules is EtlRule[] {
       ops.includes(r.operator) &&
       Array.isArray(r.values) &&
       r.values.every((v: unknown) => typeof v === "string") &&
-      typeof r.enabled === "boolean"
+      typeof r.enabled === "boolean" &&
+      (r.action === undefined || r.action === "exclude" || r.action === "classify") &&
+      (r.category === undefined || typeof r.category === "string")
   )
 }

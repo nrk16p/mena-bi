@@ -5,6 +5,7 @@ export const DELIVER_DB = "mena-bi";
 export const DELIVER_COLLECTION = "deliverResult";
 export const TRIP_DATA_COLLECTION = "tripData";
 export const WEIGHT_DATA_COLLECTION = "weightData";
+export const COST_DATA_COLLECTION = "transportCost";
 
 // Fetch slim rows for a target month via the (_year,_month,_branch) index.
 // Includes ±1 neighbouring file-months because ออก LDT can fall outside the
@@ -32,6 +33,7 @@ export async function fetchDeliverRows(
         หาง: 1,
         น้ำหนักต้นทาง: 1,
         น้ำหนักปลายทาง: 1,
+        ค่าจัดส่ง: 1,
         LDT: 1,
         _ldt_base: 1,
         _branch: 1,
@@ -52,6 +54,7 @@ export async function fetchDeliverRows(
       plateTail: d["หาง"] != null ? String(d["หาง"]) : null,
       weightOrigin: (d["น้ำหนักต้นทาง"] as number | string) ?? null,
       weightDest: (d["น้ำหนักปลายทาง"] as number | string) ?? null,
+      amount: (d["ค่าจัดส่ง"] as number | string) ?? null,
       issueDate: (d["ออก LDT"] as string | Date) ?? null,
     });
   }

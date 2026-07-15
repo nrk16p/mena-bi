@@ -50,9 +50,87 @@ export function buildTripSeedRules(): EtlRule[] {
   ]
 }
 
+// Master ค่าขนส่ง: cut rules first, then classification. Order = precedence,
+// so anything not matched falls through to the flow's defaultCategory (ค่าขนส่ง).
+export function buildCostSeedRules(): EtlRule[] {
+  return [
+    {
+      id: "service-excluded",
+      label: "ตัดบริการ (ชดเชยเชื้อเพลิง)",
+      field: "บริการ",
+      operator: "equals",
+      values: [
+        "Mixer ชดเชยเชื้อเพลิง โม่เล็ก",
+        "Mixer ชดเชยเชื้อเพลิง โม่ใหญ่",
+        "ชดเชยเชื้อเพลิงตู้เย็น 9.5 10 ล้อ สระบุรี",
+        "ชดเชยเชื้อเพลิงตู้เย็น 9.5 12 ล้อ สระบุรี",
+        "ชดเชยเชื้อเพลิงงานตู้ผ้าใบ TDM",
+      ],
+      enabled: true,
+      action: "exclude",
+    },
+    {
+      id: "subcode-excluded",
+      label: "ตัด subcode (ค่าเที่ยว / ค่าลงของ / ฯลฯ)",
+      field: "subcode",
+      operator: "equals",
+      values: [
+        "ค่าเที่ยว",
+        "หักค่าเที่ยว",
+        "ค่าเทช้า",
+        "ค่าทางด่วน",
+        "ค่าธรรมเนียม",
+        "ค่าบริการ",
+        "ค่าลงของ",
+      ],
+      enabled: true,
+      action: "exclude",
+    },
+    {
+      id: "subcode-keyword",
+      label: "ตัด subcode ที่มีคำ",
+      field: "subcode",
+      operator: "contains",
+      values: ["ค่าชั่งน้ำหนัก"],
+      enabled: true,
+      action: "exclude",
+    },
+    {
+      id: "ldt-keyword",
+      label: "ตัด LDT ที่มีคำ",
+      field: "LDT",
+      operator: "contains_word",
+      values: ["Gen"],
+      enabled: true,
+      action: "exclude",
+    },
+    {
+      id: "cat-guarantee",
+      label: "โซน Guarantee / Fix Cost → ประกันรายได้",
+      field: "โซน",
+      operator: "equals",
+      values: ["Guarantee", "Fix Cost Old", "Fix Cost New"],
+      enabled: true,
+      action: "classify",
+      category: "ประกันรายได้ + ค่าอื่นๆ",
+    },
+    {
+      id: "cat-transfer",
+      label: "บริการ Mixer ค่าโอนย้าย → ค่าโอนย้าย",
+      field: "บริการ",
+      operator: "equals",
+      values: ["Mixer ค่าโอนย้าย"],
+      enabled: true,
+      action: "classify",
+      category: "ค่าโอนย้าย",
+    },
+  ]
+}
+
 const SEEDS: Record<string, () => EtlRule[]> = {
   trip: buildTripSeedRules,
   weight: buildTripSeedRules, // same cut conditions as trip, editable independently
+  "transport-cost": buildCostSeedRules,
 }
 
 // Load the rule doc for a flow, seeding version 1 on first use.

@@ -21,6 +21,8 @@ type Rule = {
   operator: "equals" | "contains" | "contains_word"
   values: string[]
   enabled: boolean
+  action?: "exclude" | "classify"
+  category?: string
 }
 
 type RuleDoc = {
@@ -31,6 +33,8 @@ type RuleDoc = {
   updatedAt?: string
   updatedBy?: string
   ruleFields: string[]
+  categories: string[]
+  defaultCategory: string | null
   isAdmin: boolean
 }
 
@@ -41,6 +45,8 @@ type Preview = {
   trips: number
   excluded: number
   excludedByRule: Record<string, number>
+  totalAmount?: number
+  byCategory?: Record<string, { rows: number; amount: number }>
 }
 
 type FlowInfo = {
@@ -319,6 +325,38 @@ function ConditionsContent() {
                 ))}
               </select>
 
+              {/* Action — only flows with categories can classify */}
+              {(doc?.categories.length ?? 0) > 0 && (
+                <select
+                  value={rule.action ?? "exclude"}
+                  onChange={(e) => {
+                    const action = e.target.value as Rule["action"]
+                    updateRule(rule.id, {
+                      action,
+                      category: action === "classify" ? (rule.category ?? doc?.categories[0]) : undefined,
+                    })
+                  }}
+                  className="h-8 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+                    px-2 text-[12px] text-gray-700 dark:text-gray-200 outline-none"
+                >
+                  <option value="exclude">→ ตัดทิ้ง</option>
+                  <option value="classify">→ จัดประเภท</option>
+                </select>
+              )}
+              {rule.action === "classify" && (
+                <select
+                  value={rule.category ?? ""}
+                  onChange={(e) => updateRule(rule.id, { category: e.target.value })}
+                  className="h-8 rounded-lg border border-emerald-200 dark:border-emerald-800/50
+                    bg-emerald-50 dark:bg-emerald-950/30 px-2 text-[12px]
+                    text-emerald-700 dark:text-emerald-300 outline-none"
+                >
+                  {(doc?.categories ?? []).map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              )}
+
               <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-gray-500 dark:text-gray-400">
                 <input
                   type="checkbox"
@@ -403,11 +441,22 @@ function ConditionsContent() {
         {preview && (
           <div className="mt-3 space-y-1 text-[13px]">
             <p className="text-gray-700 dark:text-gray-300">
-              เดือน {preview.monthKey}: unique LDT{" "}
-              <b className="tabular-nums">{preview.uniqueLdt.toLocaleString()}</b> → นับเป็นเที่ยว{" "}
+              เดือน {preview.monthKey}: {doc?.defaultCategory ? "แถวในเดือน" : "unique LDT"}{" "}
+              <b className="tabular-nums">{preview.uniqueLdt.toLocaleString()}</b> →{" "}
+              {doc?.defaultCategory ? "นับ" : "นับเป็นเที่ยว"}{" "}
               <b className="tabular-nums text-violet-700 dark:text-violet-300">{preview.trips.toLocaleString()}</b>{" "}
               / ตัดออก <b className="tabular-nums text-red-500">{preview.excluded.toLocaleString()}</b>
             </p>
+            {preview.byCategory && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {Object.entries(preview.byCategory).map(([cat, v]) => (
+                  <span key={cat} className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 text-[11px]
+                    text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/40">
+                    {cat}: <b className="tabular-nums">{v.amount.toLocaleString()}</b> ({v.rows.toLocaleString()} แถว)
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5 pt-1">
               {Object.entries(preview.excludedByRule).map(([label, n]) => (
                 <span key={label} className="rounded-md bg-white dark:bg-white/8 px-2 py-1 text-[11px]

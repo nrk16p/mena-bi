@@ -33,7 +33,14 @@ export async function GET(req: NextRequest) {
   const doc = await getRuleDoc(db, flowKey)
   return NextResponse.json({
     success: true,
-    data: { ...doc, _id: undefined, ruleFields: flow.ruleFields, isAdmin: perms.isAdmin },
+    data: {
+      ...doc,
+      _id: undefined,
+      ruleFields: flow.ruleFields,
+      categories: flow.categories,
+      defaultCategory: flow.defaultCategory,
+      isAdmin: perms.isAdmin,
+    },
   })
 }
 

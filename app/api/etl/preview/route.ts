@@ -4,9 +4,9 @@ import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
 import { DELIVER_DB, fetchDeliverRows } from "@/lib/trip-count/source"
-import { buildMonthTrips, buildMonthWeights } from "@/lib/trip-count/calculate"
+import { buildMonthCosts, buildMonthTrips, buildMonthWeights } from "@/lib/trip-count/calculate"
 import { validateRules } from "@/lib/etl/engine"
-import { SOURCES, getFlow, toFlowConfig, type FlowConfig } from "@/lib/etl/flows"
+import { SOURCES, STATIC_FLOWS, getFlow, toFlowConfig, type FlowConfig } from "@/lib/etl/flows"
 import { buildFlowMonthData, fetchFlowRows } from "@/lib/etl/executor"
 
 export const maxDuration = 300
@@ -60,6 +60,30 @@ export async function POST(req: NextRequest) {
         rowsScanned: rows.length,
         uniqueLdt,
         trips: trips.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+      },
+    })
+  }
+  if (body.flowKey === "transport-cost") {
+    const rows = await fetchDeliverRows(db, year, month)
+    const flow = STATIC_FLOWS["transport-cost"]
+    const { monthKey, rowsInMonth, docs, totalAmount, byCategory, excluded } = buildMonthCosts(
+      rows,
+      year,
+      month,
+      body.rules,
+      flow.defaultCategory ?? "ค่าขนส่ง"
+    )
+    return NextResponse.json({
+      success: true,
+      data: {
+        monthKey,
+        rowsScanned: rows.length,
+        uniqueLdt: rowsInMonth,
+        trips: docs.length,
+        totalAmount,
+        byCategory,
         excluded: excluded.total,
         excludedByRule: excluded.byRule,
       },
