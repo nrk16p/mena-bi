@@ -2,13 +2,55 @@
 
 import { signIn, useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useEffect, Suspense } from "react"
+import { useEffect, useRef, Suspense } from "react"
 
+// Still image shows instantly and stays as fallback while the video loads
+// (or when autoplay is blocked)
 const bgStyle: React.CSSProperties = {
   backgroundImage: "url('/login-bg.jpg')",
   backgroundSize: "cover",
   backgroundPosition: "center",
   backgroundRepeat: "no-repeat",
+}
+
+// Loop only the 2s–9s segment of the clip
+const CLIP_START = 2
+const CLIP_END = 9
+
+function LiveWallpaper() {
+  const ref = useRef<HTMLVideoElement>(null)
+
+  // loadedmetadata can fire before hydration — seek after mount as well
+  useEffect(() => {
+    const v = ref.current
+    if (v && v.readyState >= 1 && v.currentTime < CLIP_START) {
+      v.currentTime = CLIP_START
+    }
+  }, [])
+
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      muted
+      playsInline
+      preload="auto"
+      poster="/login-bg.jpg"
+      className="absolute inset-0 h-full w-full object-cover"
+      onLoadedMetadata={(e) => {
+        e.currentTarget.currentTime = CLIP_START
+      }}
+      onTimeUpdate={(e) => {
+        const v = e.currentTarget
+        if (v.currentTime >= CLIP_END || v.ended) {
+          v.currentTime = CLIP_START
+          v.play().catch(() => {})
+        }
+      }}
+    >
+      <source src="/login-bg.mp4" type="video/mp4" />
+    </video>
+  )
 }
 
 function LoginContent() {
@@ -25,6 +67,7 @@ function LoginContent() {
   if (status === "loading") {
     return (
       <div className="fixed inset-0 flex items-center justify-center" style={bgStyle}>
+        <LiveWallpaper />
         <div className="absolute inset-0 bg-black/20" />
         <div className="relative z-10 text-[10px] tracking-[0.3em] text-white/50 uppercase">
           Loading
@@ -35,6 +78,7 @@ function LoginContent() {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={bgStyle}>
+      <LiveWallpaper />
       {/* overlay */}
       <div className="absolute inset-0 bg-black/20" />
 
