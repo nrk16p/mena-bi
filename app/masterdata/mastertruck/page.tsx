@@ -23,7 +23,7 @@ type ApiData = {
   isAdmin: boolean
 }
 
-const COLUMNS = ["YM", "ศูนย์", "บริการ", "ทะเบียนรถ", "Fleet", "Site", "เชื้อเพลิง", "Type"]
+const COLUMNS = ["YM", "ศูนย์", "บริการ", "ทะเบียนรถ", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
 const PAGE_SIZE = 50
 
 function currentMonthKey(): string {
