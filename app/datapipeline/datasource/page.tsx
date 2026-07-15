@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Database, Loader2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Database, Loader2, Search, X } from "lucide-react"
 
 type DeliverRow = Record<string, string | number | null>
 
@@ -12,6 +12,8 @@ type ApiData = {
   page: number
   pageSize: number
   branches: string[]
+  services: string[]
+  zones: string[]
 }
 
 function monthOptions(count = 24): string[] {
@@ -33,6 +35,10 @@ const PAGE_SIZE = 50
 export default function DatasourcePage() {
   const [monthKey, setMonthKey] = useState(monthOptions()[0])
   const [branch, setBranch] = useState("")
+  const [service, setService] = useState("")
+  const [zone, setZone] = useState("")
+  const [q, setQ] = useState("")
+  const [qDraft, setQDraft] = useState("")
   const [page, setPage] = useState(1)
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -48,6 +54,9 @@ export default function DatasourcePage() {
         pageSize: String(PAGE_SIZE),
       })
       if (branch) params.set("branch", branch)
+      if (service) params.set("service", service)
+      if (zone) params.set("zone", zone)
+      if (q) params.set("q", q)
       const res = await fetch(`/api/deliver-result?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
@@ -57,7 +66,7 @@ export default function DatasourcePage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, branch, page])
+  }, [monthKey, branch, service, zone, q, page])
 
   useEffect(() => {
     load()
@@ -104,6 +113,50 @@ export default function DatasourcePage() {
             <option key={b} value={b}>{b}</option>
           ))}
         </select>
+
+        <select
+          value={service}
+          onChange={(e) => { setService(e.target.value); setPage(1) }}
+          className="h-9 max-w-[240px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+        >
+          <option value="">ทุกบริการ</option>
+          {(data?.services ?? []).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        <select
+          value={zone}
+          onChange={(e) => { setZone(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+        >
+          <option value="">ทุกโซน</option>
+          {(data?.zones ?? []).map((z) => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
+            placeholder="ค้นหา LDT / subcode / shipto / ทะเบียน..."
+            className="h-9 w-64 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+          />
+          {q && (
+            <button
+              onClick={() => { setQ(""); setQDraft(""); setPage(1) }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
 
         {data && (
           <span className="ml-auto text-[12px] text-gray-400 dark:text-gray-500">

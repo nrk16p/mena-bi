@@ -24,7 +24,7 @@ const COLUMNS = [
   "_branch",
 ] as const
 
-// GET /api/deliver-result?monthKey=2026-06&page=1&pageSize=50&branch=...
+// GET /api/deliver-result?monthKey=2026-06&page=1&pageSize=50&branch=&service=&zone=&q=
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   const perms = await getUserPermissions(session?.user?.email)
@@ -41,17 +41,29 @@ export async function GET(req: NextRequest) {
   const page = Math.max(Number(searchParams.get("page") ?? 1) || 1, 1)
   const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") ?? 50) || 50, 10), 200)
   const branch = searchParams.get("branch")
+  const service = searchParams.get("service")
+  const zone = searchParams.get("zone")
+  const q = (searchParams.get("q") ?? "").trim()
 
   const monthFilter = { _year: Number(m[1]), _month: Number(m[2]) }
-  const filter = branch ? { ...monthFilter, _branch: branch } : monthFilter
+  const filter: Record<string, unknown> = { ...monthFilter }
+  if (branch) filter._branch = branch
+  if (service) filter["บริการ"] = service
+  if (zone) filter["โซน"] = zone
+  if (q) {
+    const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
+    filter.$or = [{ LDT: re }, { subcode: re }, { ชื่อshipto: re }, { หัว: re }, { หาง: re }, { เลขรถ: re }]
+  }
 
   const client = await clientPromise
   const col = client.db(DELIVER_DB).collection(DELIVER_COLLECTION)
 
   const projection = Object.fromEntries([["_id", 0], ...COLUMNS.map((c) => [c, 1])])
-  const [total, branches, rows] = await Promise.all([
+  const [total, branches, services, zones, rows] = await Promise.all([
     col.countDocuments(filter),
     col.distinct("_branch", monthFilter),
+    col.distinct("บริการ", monthFilter),
+    col.distinct("โซน", monthFilter),
     col
       .find(filter, { projection })
       .sort({ _branch: 1 })
@@ -62,6 +74,15 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    data: { columns: COLUMNS, rows, total, page, pageSize, branches: branches.sort() },
+    data: {
+      columns: COLUMNS,
+      rows,
+      total,
+      page,
+      pageSize,
+      branches: branches.sort(),
+      services: (services as Array<string | null>).filter(Boolean).sort(),
+      zones: (zones as Array<string | null>).filter(Boolean).sort(),
+    },
   })
 }
