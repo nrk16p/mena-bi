@@ -22,6 +22,7 @@ import {
   FolderCog,
   Fuel,
   Droplets,
+  Share2,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -89,6 +90,18 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/datapipeline/datasource", label: "Datasource", icon: Database },
       { href: "/datapipeline/conditions", label: "Conditions", icon: SlidersHorizontal },
       { href: "/datapipeline/data", label: "Data", icon: Warehouse },
+    ],
+  },
+  {
+    label:        "Data Modeling",
+    groupIcon:    Share2,
+    permissionKey: "bi",
+    dot:          "bg-cyan-500",
+    iconColor:    "text-cyan-500 dark:text-cyan-400",
+    activeBg:     "bg-cyan-50 dark:bg-cyan-950/40",
+    activeText:   "text-cyan-700 dark:text-cyan-300",
+    items: [
+      { href: "/datamodeling/model", label: "Model View", icon: Share2 },
     ],
   },
   {
