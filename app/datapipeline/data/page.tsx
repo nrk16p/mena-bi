@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Banknote, Droplets, Layers, LayoutGrid, Scale, Truck, Users, Warehouse } from "lucide-react"
+import { Banknote, Droplets, Gauge, Layers, LayoutGrid, Scale, Truck, Users, Warehouse } from "lucide-react"
 
 type Tone = "amber" | "emerald" | "sky" | "violet"
 
@@ -85,6 +85,13 @@ const TOPICS: {
     description: "รวมทุก data (snowflake) grain=ทะเบียน×บริการ + กราฟ MoM",
     icon: Layers,
     tone: "violet",
+  },
+  {
+    href: "/datapipeline/data/pivot",
+    label: "Pivot Dashboard",
+    description: "จัดกลุ่ม (Fleet/Site/Type…) — Performance × Revenue + กราฟ",
+    icon: Gauge,
+    tone: "sky",
   },
 ]
 
