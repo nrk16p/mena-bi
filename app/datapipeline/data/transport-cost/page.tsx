@@ -3,17 +3,18 @@
 import { useCallback, useEffect, useState } from "react"
 import * as XLSX from "xlsx"
 import {
+  Banknote,
   ChevronLeft,
   ChevronRight,
   Download,
-  Droplets,
   Loader2,
   RefreshCw,
   Search,
   X,
 } from "lucide-react"
+import { BackLink } from "@/components/back-link"
 
-type FuelRow = {
+type CostRow = {
   monthKey: string
   issueDate: string | null
   ldt: string | null
@@ -21,53 +22,43 @@ type FuelRow = {
   subcode: string | null
   zone: string | null
   branch: string | null
-  partnerType: string | null
   plateHead: string | null
-  oil1: number
-  oil2: number
-  oil: number
-  ngv1: number
-  ngv2: number
-  ngv: number
-  fuelType: string
+  amount: number
+  category: string
   computedAt?: string
 }
 
 type ApiData = {
-  rows: FuelRow[]
+  rows: CostRow[]
   total: number
   page: number
   pageSize: number
-  fuelTypes: string[]
+  categories: string[]
   services: string[]
   branches: string[]
-  partnerTypes: string[]
-  totalOil: number | null
-  totalNgv: number | null
-  byFuelType: Record<string, { rows: number; qty: number }> | null
+  zones: string[]
+  totalAmount: number | null
+  byCategory: Record<string, { rows: number; amount: number }> | null
   computedAt: string | null
   rulesVersion: number | null
 }
 
-const COLUMNS: Array<{ key: keyof FuelRow; label: string; numeric?: boolean; strong?: boolean }> = [
+const COLUMNS: Array<{ key: keyof CostRow; label: string; numeric?: boolean }> = [
   { key: "issueDate", label: "ออก LDT" },
   { key: "ldt", label: "LDT" },
   { key: "service", label: "บริการ" },
+  { key: "subcode", label: "subcode" },
+  { key: "zone", label: "โซน" },
   { key: "branch", label: "สาขา" },
-  { key: "partnerType", label: "ประเภทรถร่วม" },
   { key: "plateHead", label: "หัว" },
-  { key: "fuelType", label: "ประเภทเชื้อเพลิง" },
-  { key: "oil1", label: "Rate น้ำมัน พจส 1", numeric: true },
-  { key: "oil2", label: "Rate น้ำมัน พจส 2", numeric: true },
-  { key: "oil", label: "Oil", numeric: true, strong: true },
-  { key: "ngv1", label: "Rate NGV พจส 1", numeric: true },
-  { key: "ngv2", label: "Rate NGV พจส 2", numeric: true },
-  { key: "ngv", label: "NGV", numeric: true, strong: true },
+  { key: "category", label: "ประเภทรายได้" },
+  { key: "amount", label: "ค่าจัดส่ง", numeric: true },
 ]
 
-const FUEL_TONE: Record<string, string> = {
-  Oil: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
-  NGV: "text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40",
+const CATEGORY_TONE: Record<string, string> = {
+  "ค่าขนส่ง": "text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40",
+  "ค่าโอนย้าย": "text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40",
+  "ประกันรายได้ + ค่าอื่นๆ": "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
 }
 
 const PAGE_SIZE = 50
@@ -80,14 +71,43 @@ function monthOptions(count = 24): string[] {
   })
 }
 
-const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+const baht = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 
-export default function FuelQtyPage() {
+function CategoryCard({
+  name,
+  rows,
+  amount,
+  active,
+  onClick,
+}: {
+  name: string
+  rows: number
+  amount: number
+  active: boolean
+  onClick: () => void
+}) {
+  const tone = CATEGORY_TONE[name] ?? "text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-white/5"
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-3 text-left transition-colors
+        ${active
+          ? "border-sky-400 bg-sky-50/60 dark:bg-sky-950/30"
+          : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-gray-300 dark:hover:border-white/16"}`}
+    >
+      <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tone}`}>{name}</span>
+      <p className="mt-1.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white">{baht(amount)}</p>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">{rows.toLocaleString()} แถว</p>
+    </button>
+  )
+}
+
+export default function TransportCostPage() {
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
-  const [fuelType, setFuelType] = useState("")
+  const [category, setCategory] = useState("")
   const [service, setService] = useState("")
   const [branch, setBranch] = useState("")
-  const [partnerType, setPartnerType] = useState("")
+  const [zone, setZone] = useState("")
   const [q, setQ] = useState("")
   const [qDraft, setQDraft] = useState("")
   const [page, setPage] = useState(1)
@@ -97,19 +117,19 @@ export default function FuelQtyPage() {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const hasFilter = !!(fuelType || service || branch || partnerType || q)
+  const hasFilter = !!(category || service || branch || zone || q)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, page: String(page), pageSize: String(PAGE_SIZE) })
-      if (fuelType) params.set("fuelType", fuelType)
+      if (category) params.set("category", category)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
-      if (partnerType) params.set("partnerType", partnerType)
+      if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/fuel-qty-data?${params}`)
+      const res = await fetch(`/api/cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
       setData(json.data)
@@ -118,7 +138,7 @@ export default function FuelQtyPage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, fuelType, service, branch, partnerType, q, page])
+  }, [monthKey, category, service, branch, zone, q, page])
 
   useEffect(() => {
     load()
@@ -128,7 +148,7 @@ export default function FuelQtyPage() {
     setRunning(true)
     setError(null)
     try {
-      const res = await fetch("/api/fuel-qty-etl", {
+      const res = await fetch("/api/cost-etl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: monthKey, to: monthKey }),
@@ -149,21 +169,21 @@ export default function FuelQtyPage() {
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, all: "1" })
-      if (fuelType) params.set("fuelType", fuelType)
+      if (category) params.set("category", category)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
-      if (partnerType) params.set("partnerType", partnerType)
+      if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/fuel-qty-data?${params}`)
+      const res = await fetch(`/api/cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
-      const rows = (json.data.rows as FuelRow[]).map((r) =>
+      const rows = (json.data.rows as CostRow[]).map((r) =>
         Object.fromEntries(COLUMNS.map((c) => [c.label, r[c.key] ?? ""]))
       )
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "fuelQty")
-      XLSX.writeFile(wb, `fuelQty-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
+      XLSX.utils.book_append_sheet(wb, ws, "transportCost")
+      XLSX.writeFile(wb, `transportCost-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
     } finally {
@@ -176,59 +196,41 @@ export default function FuelQtyPage() {
 
   return (
     <div className="max-w-full">
+      <BackLink href="/datapipeline/data" label="กลับไปหน้า Data" />
+
       {/* Header */}
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/50">
-          <Droplets size={18} className="text-amber-600 dark:text-amber-400" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-950/50">
+          <Banknote size={18} className="text-sky-600 dark:text-sky-400" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master จำนวนเชื้อเพลิง</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master ค่าขนส่ง</h1>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            Oil = Rate น้ำมัน พจส 1+2 · NGV = Rate NGV พจส 1+2 — รายแถว (ไม่ dedupe) ตัดแถวที่ไม่มีเชื้อเพลิง
+            ค่าจัดส่งรายแถว (ไม่ dedupe) หลังตัดตามเงื่อนไข แยกตามประเภทรายได้
           </p>
         </div>
       </div>
 
-      {/* Fuel summary — Oil and NGV are different units, kept apart */}
-      {data && (data.totalOil != null || data.totalNgv != null) && (
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <button
-            onClick={() => { setFuelType(fuelType === "Oil" ? "" : "Oil"); setPage(1) }}
-            className={`rounded-xl border px-4 py-3 text-left transition-colors
-              ${fuelType === "Oil"
-                ? "border-amber-400 bg-amber-50/60 dark:bg-amber-950/30"
-                : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-amber-300"}`}
-          >
-            <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${FUEL_TONE.Oil}`}>Oil</span>
-            <p className="mt-1.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white">
-              {qty(data.totalOil ?? 0)}
-            </p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              {(data.byFuelType?.Oil?.rows ?? 0).toLocaleString()} แถว
-            </p>
-          </button>
-
-          <button
-            onClick={() => { setFuelType(fuelType === "NGV" ? "" : "NGV"); setPage(1) }}
-            className={`rounded-xl border px-4 py-3 text-left transition-colors
-              ${fuelType === "NGV"
-                ? "border-teal-400 bg-teal-50/60 dark:bg-teal-950/30"
-                : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-teal-300"}`}
-          >
-            <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${FUEL_TONE.NGV}`}>NGV</span>
-            <p className="mt-1.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white">
-              {qty(data.totalNgv ?? 0)}
-            </p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              {(data.byFuelType?.NGV?.rows ?? 0).toLocaleString()} แถว
-            </p>
-          </button>
-
-          <div className="rounded-xl border border-gray-900/10 dark:border-white/12 bg-gray-900 dark:bg-white/8 px-4 py-3">
-            <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-400">แถวทั้งหมด</span>
-            <p className="mt-1.5 text-xl font-bold tabular-nums text-white">{data.total.toLocaleString()}</p>
-            <p className="text-[11px] text-gray-400">ตาม filter ปัจจุบัน</p>
-          </div>
+      {/* Category summary */}
+      {data?.byCategory && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(data.byCategory).map(([name, v]) => (
+            <CategoryCard
+              key={name}
+              name={name}
+              rows={v.rows}
+              amount={v.amount}
+              active={category === name}
+              onClick={() => { setCategory(category === name ? "" : name); setPage(1) }}
+            />
+          ))}
+          {data.totalAmount != null && (
+            <div className="rounded-xl border border-gray-900/10 dark:border-white/12 bg-gray-900 dark:bg-white/8 px-4 py-3">
+              <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-400">รวมทั้งหมด</span>
+              <p className="mt-1.5 text-xl font-bold tabular-nums text-white">{baht(data.totalAmount)}</p>
+              <p className="text-[11px] text-gray-400">{data.total.toLocaleString()} แถว (ตาม filter)</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -238,20 +240,22 @@ export default function FuelQtyPage() {
           value={monthKey}
           onChange={(e) => {
             setMonthKey(e.target.value)
-            setFuelType(""); setService(""); setBranch(""); setPartnerType(""); setQ(""); setQDraft("")
+            setCategory(""); setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
             setPage(1)
           }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
-          {monthOptions().map((mk) => <option key={mk} value={mk}>{mk}</option>)}
+          {monthOptions().map((mk) => (
+            <option key={mk} value={mk}>{mk}</option>
+          ))}
         </select>
 
         <select
           value={service}
           onChange={(e) => { setService(e.target.value); setPage(1) }}
-          className="h-9 max-w-[220px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+          className="h-9 max-w-[240px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           <option value="">ทุกบริการ</option>
           {(data?.services ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -261,20 +265,20 @@ export default function FuelQtyPage() {
           value={branch}
           onChange={(e) => { setBranch(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           <option value="">ทุกสาขา</option>
           {(data?.branches ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
 
         <select
-          value={partnerType}
-          onChange={(e) => { setPartnerType(e.target.value); setPage(1) }}
+          value={zone}
+          onChange={(e) => { setZone(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
-          <option value="">ทุกประเภทรถร่วม</option>
-          {(data?.partnerTypes ?? []).map((p) => <option key={p} value={p}>{p}</option>)}
+          <option value="">ทุกโซน</option>
+          {(data?.zones ?? []).map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
 
         <div className="relative">
@@ -285,7 +289,7 @@ export default function FuelQtyPage() {
             onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
             placeholder="ค้นหา LDT / subcode / ทะเบียน..."
             className="h-9 w-52 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-amber-400"
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
           />
           {q && (
             <button
@@ -300,10 +304,10 @@ export default function FuelQtyPage() {
         <button
           onClick={runEtl}
           disabled={running || loading}
-          className="flex h-9 items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-800/50
-            bg-amber-50 dark:bg-amber-950/30 px-3 text-[13px] font-medium
-            text-amber-700 dark:text-amber-300 disabled:opacity-50
-            hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+          className="flex h-9 items-center gap-2 rounded-lg border border-sky-200 dark:border-sky-800/50
+            bg-sky-50 dark:bg-sky-950/30 px-3 text-[13px] font-medium
+            text-sky-700 dark:text-sky-300 disabled:opacity-50
+            hover:bg-sky-100 dark:hover:bg-sky-950/50 transition-colors"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {running ? "กำลังคำนวณ..." : "คำนวณใหม่ (ETL)"}
@@ -337,7 +341,7 @@ export default function FuelQtyPage() {
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/12 p-10 text-center">
           <p className="text-[13px] text-gray-500 dark:text-gray-400">ยังไม่มีข้อมูลเดือน {monthKey}</p>
           <p className="mt-1 text-[12px] text-gray-400 dark:text-gray-500">
-            กด &quot;คำนวณใหม่ (ETL)&quot; เพื่อประมวลผลจาก driverCost
+            กด &quot;คำนวณใหม่ (ETL)&quot; เพื่อประมวลผลจาก deliverResult
           </p>
         </div>
       ) : (
@@ -372,11 +376,12 @@ export default function FuelQtyPage() {
                     >
                       {COLUMNS.map((c) => {
                         const v = row[c.key]
-                        if (c.key === "fuelType") {
+                        if (c.key === "category") {
+                          const tone = CATEGORY_TONE[row.category] ?? ""
                           return (
                             <td key={c.key} className="px-3 py-2">
-                              <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${FUEL_TONE[row.fuelType] ?? ""}`}>
-                                {row.fuelType}
+                              <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
+                                {row.category}
                               </span>
                             </td>
                           )
@@ -385,10 +390,13 @@ export default function FuelQtyPage() {
                           <td
                             key={c.key}
                             className={`px-3 py-2 text-gray-700 dark:text-gray-300
-                              ${c.numeric ? "text-right tabular-nums" : ""}
-                              ${c.strong ? "font-semibold text-gray-900 dark:text-white" : ""}`}
+                              ${c.numeric ? "text-right tabular-nums font-medium" : ""}`}
                           >
-                            {c.numeric ? qty(Number(v ?? 0)) : v != null && v !== "" ? String(v) : "-"}
+                            {c.numeric
+                              ? baht(Number(v ?? 0))
+                              : v != null && v !== ""
+                                ? String(v)
+                                : "-"}
                           </td>
                         )
                       })}

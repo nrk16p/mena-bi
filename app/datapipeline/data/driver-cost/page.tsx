@@ -3,17 +3,18 @@
 import { useCallback, useEffect, useState } from "react"
 import * as XLSX from "xlsx"
 import {
-  Banknote,
   ChevronLeft,
   ChevronRight,
   Download,
   Loader2,
   RefreshCw,
   Search,
+  Users,
   X,
 } from "lucide-react"
+import { BackLink } from "@/components/back-link"
 
-type CostRow = {
+type DriverCostRow = {
   monthKey: string
   issueDate: string | null
   ldt: string | null
@@ -21,44 +22,46 @@ type CostRow = {
   subcode: string | null
   zone: string | null
   branch: string | null
+  partnerType: string | null
   plateHead: string | null
-  amount: number
-  category: string
+  driver1: string | null
+  driver2: string | null
+  fee1: number
+  fee2: number
+  fee: number
   computedAt?: string
 }
 
 type ApiData = {
-  rows: CostRow[]
+  rows: DriverCostRow[]
   total: number
   page: number
   pageSize: number
-  categories: string[]
+  partnerTypes: string[]
   services: string[]
   branches: string[]
   zones: string[]
-  totalAmount: number | null
-  byCategory: Record<string, { rows: number; amount: number }> | null
+  totalFee: number | null
+  byPartnerType: Record<string, { rows: number; fee: number }> | null
   computedAt: string | null
   rulesVersion: number | null
 }
 
-const COLUMNS: Array<{ key: keyof CostRow; label: string; numeric?: boolean }> = [
+const COLUMNS: Array<{ key: keyof DriverCostRow; label: string; numeric?: boolean; strong?: boolean }> = [
   { key: "issueDate", label: "ออก LDT" },
   { key: "ldt", label: "LDT" },
   { key: "service", label: "บริการ" },
   { key: "subcode", label: "subcode" },
   { key: "zone", label: "โซน" },
   { key: "branch", label: "สาขา" },
+  { key: "partnerType", label: "ประเภทรถร่วม" },
   { key: "plateHead", label: "หัว" },
-  { key: "category", label: "ประเภทรายได้" },
-  { key: "amount", label: "ค่าจัดส่ง", numeric: true },
+  { key: "driver1", label: "พจส1" },
+  { key: "driver2", label: "พจส2" },
+  { key: "fee1", label: "ค่าเที่ยว พจส 1", numeric: true },
+  { key: "fee2", label: "ค่าเที่ยว พจส 2", numeric: true },
+  { key: "fee", label: "ค่าเที่ยว", numeric: true, strong: true },
 ]
-
-const CATEGORY_TONE: Record<string, string> = {
-  "ค่าขนส่ง": "text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40",
-  "ค่าโอนย้าย": "text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40",
-  "ประกันรายได้ + ค่าอื่นๆ": "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
-}
 
 const PAGE_SIZE = 50
 
@@ -72,38 +75,9 @@ function monthOptions(count = 24): string[] {
 
 const baht = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 
-function CategoryCard({
-  name,
-  rows,
-  amount,
-  active,
-  onClick,
-}: {
-  name: string
-  rows: number
-  amount: number
-  active: boolean
-  onClick: () => void
-}) {
-  const tone = CATEGORY_TONE[name] ?? "text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-white/5"
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left transition-colors
-        ${active
-          ? "border-sky-400 bg-sky-50/60 dark:bg-sky-950/30"
-          : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-gray-300 dark:hover:border-white/16"}`}
-    >
-      <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tone}`}>{name}</span>
-      <p className="mt-1.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white">{baht(amount)}</p>
-      <p className="text-[11px] text-gray-400 dark:text-gray-500">{rows.toLocaleString()} แถว</p>
-    </button>
-  )
-}
-
-export default function TransportCostPage() {
+export default function DriverCostPage() {
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
-  const [category, setCategory] = useState("")
+  const [partnerType, setPartnerType] = useState("")
   const [service, setService] = useState("")
   const [branch, setBranch] = useState("")
   const [zone, setZone] = useState("")
@@ -116,19 +90,19 @@ export default function TransportCostPage() {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const hasFilter = !!(category || service || branch || zone || q)
+  const hasFilter = !!(partnerType || service || branch || zone || q)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, page: String(page), pageSize: String(PAGE_SIZE) })
-      if (category) params.set("category", category)
+      if (partnerType) params.set("partnerType", partnerType)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
       if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/cost-data?${params}`)
+      const res = await fetch(`/api/driver-cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
       setData(json.data)
@@ -137,7 +111,7 @@ export default function TransportCostPage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, category, service, branch, zone, q, page])
+  }, [monthKey, partnerType, service, branch, zone, q, page])
 
   useEffect(() => {
     load()
@@ -147,7 +121,7 @@ export default function TransportCostPage() {
     setRunning(true)
     setError(null)
     try {
-      const res = await fetch("/api/cost-etl", {
+      const res = await fetch("/api/driver-cost-etl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: monthKey, to: monthKey }),
@@ -168,21 +142,21 @@ export default function TransportCostPage() {
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, all: "1" })
-      if (category) params.set("category", category)
+      if (partnerType) params.set("partnerType", partnerType)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
       if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/cost-data?${params}`)
+      const res = await fetch(`/api/driver-cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
-      const rows = (json.data.rows as CostRow[]).map((r) =>
+      const rows = (json.data.rows as DriverCostRow[]).map((r) =>
         Object.fromEntries(COLUMNS.map((c) => [c.label, r[c.key] ?? ""]))
       )
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "transportCost")
-      XLSX.writeFile(wb, `transportCost-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
+      XLSX.utils.book_append_sheet(wb, ws, "driverCost")
+      XLSX.writeFile(wb, `driverCost-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
     } finally {
@@ -195,36 +169,43 @@ export default function TransportCostPage() {
 
   return (
     <div className="max-w-full">
+      <BackLink href="/datapipeline/data" label="กลับไปหน้า Data" />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-950/50">
-          <Banknote size={18} className="text-sky-600 dark:text-sky-400" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-950/50">
+          <Users size={18} className="text-rose-600 dark:text-rose-400" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master ค่าขนส่ง</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master ค่าเที่ยว พจส</h1>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            ค่าจัดส่งรายแถว (ไม่ dedupe) หลังตัดตามเงื่อนไข แยกตามประเภทรายได้
+            ค่าเที่ยว = พจส 1 + พจส 2 รายแถว (ไม่ dedupe) — ตัดแถวที่ไม่มีค่าเที่ยว
           </p>
         </div>
       </div>
 
-      {/* Category summary */}
-      {data?.byCategory && (
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Object.entries(data.byCategory).map(([name, v]) => (
-            <CategoryCard
-              key={name}
-              name={name}
-              rows={v.rows}
-              amount={v.amount}
-              active={category === name}
-              onClick={() => { setCategory(category === name ? "" : name); setPage(1) }}
-            />
-          ))}
-          {data.totalAmount != null && (
-            <div className="rounded-xl border border-gray-900/10 dark:border-white/12 bg-gray-900 dark:bg-white/8 px-4 py-3">
-              <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-400">รวมทั้งหมด</span>
-              <p className="mt-1.5 text-xl font-bold tabular-nums text-white">{baht(data.totalAmount)}</p>
+      {/* Partner type summary */}
+      {data?.byPartnerType && (
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {Object.entries(data.byPartnerType)
+            .sort((a, b) => b[1].fee - a[1].fee)
+            .map(([name, v]) => (
+              <button
+                key={name}
+                onClick={() => { setPartnerType(partnerType === name ? "" : name); setPage(1) }}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-colors
+                  ${partnerType === name
+                    ? "border-rose-400 bg-rose-50/60 dark:bg-rose-950/30"
+                    : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-gray-300 dark:hover:border-white/16"}`}
+              >
+                <p className="truncate text-[11px] font-semibold text-gray-500 dark:text-gray-400">{name}</p>
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-gray-900 dark:text-white">{baht(v.fee)}</p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">{v.rows.toLocaleString()} แถว</p>
+              </button>
+            ))}
+          {data.totalFee != null && (
+            <div className="rounded-xl border border-gray-900/10 dark:border-white/12 bg-gray-900 dark:bg-white/8 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-gray-300 dark:text-gray-400">ค่าเที่ยวรวม</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums text-white">{baht(data.totalFee)}</p>
               <p className="text-[11px] text-gray-400">{data.total.toLocaleString()} แถว (ตาม filter)</p>
             </div>
           )}
@@ -237,22 +218,20 @@ export default function TransportCostPage() {
           value={monthKey}
           onChange={(e) => {
             setMonthKey(e.target.value)
-            setCategory(""); setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
+            setPartnerType(""); setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
             setPage(1)
           }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-rose-400"
         >
-          {monthOptions().map((mk) => (
-            <option key={mk} value={mk}>{mk}</option>
-          ))}
+          {monthOptions().map((mk) => <option key={mk} value={mk}>{mk}</option>)}
         </select>
 
         <select
           value={service}
           onChange={(e) => { setService(e.target.value); setPage(1) }}
-          className="h-9 max-w-[240px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+          className="h-9 max-w-[220px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-rose-400"
         >
           <option value="">ทุกบริการ</option>
           {(data?.services ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -262,7 +241,7 @@ export default function TransportCostPage() {
           value={branch}
           onChange={(e) => { setBranch(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-rose-400"
         >
           <option value="">ทุกสาขา</option>
           {(data?.branches ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
@@ -272,7 +251,7 @@ export default function TransportCostPage() {
           value={zone}
           onChange={(e) => { setZone(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-rose-400"
         >
           <option value="">ทุกโซน</option>
           {(data?.zones ?? []).map((z) => <option key={z} value={z}>{z}</option>)}
@@ -284,9 +263,9 @@ export default function TransportCostPage() {
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
-            placeholder="ค้นหา LDT / subcode / ทะเบียน..."
+            placeholder="ค้นหา LDT / subcode / พจส..."
             className="h-9 w-52 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-rose-400"
           />
           {q && (
             <button
@@ -301,10 +280,10 @@ export default function TransportCostPage() {
         <button
           onClick={runEtl}
           disabled={running || loading}
-          className="flex h-9 items-center gap-2 rounded-lg border border-sky-200 dark:border-sky-800/50
-            bg-sky-50 dark:bg-sky-950/30 px-3 text-[13px] font-medium
-            text-sky-700 dark:text-sky-300 disabled:opacity-50
-            hover:bg-sky-100 dark:hover:bg-sky-950/50 transition-colors"
+          className="flex h-9 items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-800/50
+            bg-rose-50 dark:bg-rose-950/30 px-3 text-[13px] font-medium
+            text-rose-700 dark:text-rose-300 disabled:opacity-50
+            hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {running ? "กำลังคำนวณ..." : "คำนวณใหม่ (ETL)"}
@@ -338,7 +317,7 @@ export default function TransportCostPage() {
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/12 p-10 text-center">
           <p className="text-[13px] text-gray-500 dark:text-gray-400">ยังไม่มีข้อมูลเดือน {monthKey}</p>
           <p className="mt-1 text-[12px] text-gray-400 dark:text-gray-500">
-            กด &quot;คำนวณใหม่ (ETL)&quot; เพื่อประมวลผลจาก deliverResult
+            กด &quot;คำนวณใหม่ (ETL)&quot; เพื่อประมวลผลจาก driverCost
           </p>
         </div>
       ) : (
@@ -373,27 +352,14 @@ export default function TransportCostPage() {
                     >
                       {COLUMNS.map((c) => {
                         const v = row[c.key]
-                        if (c.key === "category") {
-                          const tone = CATEGORY_TONE[row.category] ?? ""
-                          return (
-                            <td key={c.key} className="px-3 py-2">
-                              <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
-                                {row.category}
-                              </span>
-                            </td>
-                          )
-                        }
                         return (
                           <td
                             key={c.key}
                             className={`px-3 py-2 text-gray-700 dark:text-gray-300
-                              ${c.numeric ? "text-right tabular-nums font-medium" : ""}`}
+                              ${c.numeric ? "text-right tabular-nums" : ""}
+                              ${c.strong ? "font-semibold text-rose-700 dark:text-rose-400" : ""}`}
                           >
-                            {c.numeric
-                              ? baht(Number(v ?? 0))
-                              : v != null && v !== ""
-                                ? String(v)
-                                : "-"}
+                            {c.numeric ? baht(Number(v ?? 0)) : v != null && v !== "" ? String(v) : "-"}
                           </td>
                         )
                       })}

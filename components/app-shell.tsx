@@ -45,7 +45,7 @@ export function AppShell({
         onMobileClose={() => setSidebarOpen(false)}
         allowedGroups={allowedGroups}
       />
-      <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 sm:py-7 min-w-0">
+      <main className="flex-1 overflow-y-auto sm:px-8 py-5 sm:py-7 min-w-0 mx-4">
         {isMobile && (
           <div className="flex items-center gap-3 mb-4">
             <button

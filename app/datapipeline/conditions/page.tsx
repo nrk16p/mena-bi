@@ -474,7 +474,7 @@ function ConditionsContent() {
 
 export default function ConditionsPage() {
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-950/50">
           <SlidersHorizontal size={18} className="text-violet-600 dark:text-violet-400" />
