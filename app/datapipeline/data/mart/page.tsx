@@ -1,7 +1,8 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import * as XLSX from "xlsx"
 import {
   BarChart,
@@ -20,6 +21,7 @@ import {
   Download,
   Layers,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
   X,
@@ -60,8 +62,10 @@ const fmt = (v: unknown) => {
 }
 
 function MartContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const martKey = searchParams.get("mart") ?? "truck-summary"
+  const [marts, setMarts] = useState<Array<{ martKey: string; name: string }>>([])
 
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
   const [dims, setDims] = useState<Record<string, string>>({})
@@ -106,6 +110,10 @@ function MartContent() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    fetch("/api/marts").then(async (r) => { const j = await r.json(); if (r.ok) setMarts(j.data) }).catch(() => {})
+  }, [])
 
   async function runEtl() {
     setRunning(true)
@@ -169,6 +177,22 @@ function MartContent() {
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
             {data?.mart.description ?? "รวมข้อมูลจากหลายแหล่ง (snowflake schema)"}
           </p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {marts.length > 1 && (
+            <select
+              value={martKey}
+              onChange={(e) => router.push(`/datapipeline/data/mart?mart=${e.target.value}`)}
+              className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+                px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-cyan-400"
+            >
+              {marts.map((m) => <option key={m.martKey} value={m.martKey}>{m.name}</option>)}
+            </select>
+          )}
+          <Link href="/datapipeline/marts/new"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 text-[13px] font-medium text-white hover:bg-cyan-700 transition-colors">
+            <Plus size={14} /> สร้าง Mart
+          </Link>
         </div>
       </div>
 

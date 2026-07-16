@@ -42,6 +42,8 @@ export interface MartConfig {
   measures: MeasureSpec[]
   // Optional fuel-type dimension sourced from a plate→type map.
   fuelTypeSource?: { source: string; plateField: string; typeField: string }
+  // Optional condition: keep only base (master) rows where field ∈ values.
+  baseFilter?: { field: string; values: string[] }
 }
 
 export interface MartResult {
@@ -78,9 +80,13 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
 
   // ── Grain: master rows for the month (NOT deduped — a plate can run several
   //    services, so plate × service are distinct grain cells). ──
+  const baseQuery: Document = { [mart.monthField]: ym }
+  if (mart.baseFilter && mart.baseFilter.values.length) {
+    baseQuery[mart.baseFilter.field] = { $in: mart.baseFilter.values }
+  }
   const baseRows = await db
     .collection(mart.grainMaster)
-    .find({ [mart.monthField]: ym }, { projection: { _id: 0 } })
+    .find(baseQuery, { projection: { _id: 0 } })
     .toArray()
 
   const grain = new Map<string, FactAcc>()
