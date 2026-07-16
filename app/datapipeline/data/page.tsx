@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Banknote, LayoutGrid, Scale, Truck, Warehouse } from "lucide-react"
+import { Banknote, Droplets, LayoutGrid, Scale, Truck, Users, Warehouse } from "lucide-react"
 
 type Tone = "amber" | "emerald" | "sky" | "violet"
 
@@ -52,10 +52,24 @@ const TOPICS: {
     tone: "emerald",
   },
   {
+    href: "/datapipeline/data/fuel-qty",
+    label: "Master จำนวนเชื้อเพลิง",
+    description: "ปริมาณเชื้อเพลิงต่อเที่ยว",
+    icon: Droplets,
+    tone: "emerald",
+  },
+  {
     href: "/datapipeline/data/transport-cost",
     label: "Master ค่าขนส่ง",
     description: "ค่าจัดส่งแยกประเภทรายได้",
     icon: Banknote,
+    tone: "sky",
+  },
+  {
+    href: "/datapipeline/data/driver-cost",
+    label: "Master ค่าเที่ยว พจส",
+    description: "ค่าจัดส่งแยกประเภทรายได้",
+    icon: Users,
     tone: "sky",
   },
   {

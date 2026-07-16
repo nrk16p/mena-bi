@@ -89,7 +89,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/datapipeline/datasource", label: "Datasource", icon: Database },
       { href: "/datapipeline/conditions", label: "Conditions", icon: SlidersHorizontal },
       { href: "/datapipeline/data", label: "Data", icon: Warehouse },
-      { href: "/datapipeline/data", label: "Data", icon: Warehouse },
     ],
   },
   {

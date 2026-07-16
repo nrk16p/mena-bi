@@ -12,6 +12,7 @@ import {
   Search,
   X,
 } from "lucide-react"
+import { BackLink } from "@/components/back-link"
 
 type FuelRow = {
   monthKey: string
@@ -176,6 +177,7 @@ export default function FuelQtyPage() {
 
   return (
     <div className="max-w-full">
+      <BackLink href="/datapipeline/data" label="กลับไปหน้า Data" />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/50">
