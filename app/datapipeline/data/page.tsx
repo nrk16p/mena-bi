@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Banknote, Droplets, LayoutGrid, Scale, Truck, Users, Warehouse } from "lucide-react"
+import { Banknote, Droplets, Layers, LayoutGrid, Scale, Truck, Users, Warehouse } from "lucide-react"
 
 type Tone = "amber" | "emerald" | "sky" | "violet"
 
@@ -77,6 +77,13 @@ const TOPICS: {
     label: "Summary Data",
     description: "สรุปรายรถ (Master × น้ำหนัก × ค่าขนส่ง)",
     icon: LayoutGrid,
+    tone: "violet",
+  },
+  {
+    href: "/datapipeline/data/mart?mart=truck-summary",
+    label: "Data Mart — สรุปรายรถ",
+    description: "รวมทุก data (snowflake) grain=ทะเบียน×บริการ + กราฟ MoM",
+    icon: Layers,
     tone: "violet",
   },
 ]
