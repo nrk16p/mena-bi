@@ -4,8 +4,8 @@ import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
 import { DELIVER_DB } from "@/lib/trip-count/source"
+import { MASTERS } from "@/lib/master/registry"
 
-const COLLECTION = "mastertruck"
 const MAX_IMPORT_ROWS = 50000
 
 function monthKeyToYm(monthKey: string): number | null {
@@ -19,7 +19,7 @@ function ymToMonthKey(ym: number): string {
   return `${Math.floor(ym / 100)}-${String(ym % 100).padStart(2, "0")}`
 }
 
-// Resolve a row's YM: numeric 202605, "202605", or "2026-05"; else fallback
+// Accepts 202605, "202605" or "2026-05"; falls back to the selected month
 function resolveYm(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isInteger(value) && value >= 190001) return value
   if (typeof value === "string") {
@@ -38,12 +38,16 @@ async function getPerms() {
   return { email: email ?? null, ...perms }
 }
 
-// GET /api/master/mastertruck?monthKey=2026-05|all&page=&pageSize=&q=&all=1
-export async function GET(req: NextRequest) {
+// GET /api/master/<key>?monthKey=2026-05|all&page=&pageSize=&q=&all=1
+export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   const perms = await getPerms()
   if (!perms.isAdmin && !perms.allowedGroups.includes("bi")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+
+  const { key } = await ctx.params
+  const master = MASTERS[key]
+  if (!master) return NextResponse.json({ error: "Unknown master" }, { status: 404 })
 
   const { searchParams } = new URL(req.url)
   const monthKey = searchParams.get("monthKey") ?? "all"
@@ -58,20 +62,20 @@ export async function GET(req: NextRequest) {
     if (!ym) return NextResponse.json({ error: "Invalid monthKey" }, { status: 400 })
     filter.YM = ym
   }
-  if (q) {
+  if (q && master.searchFields.length) {
     const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
-    filter.$or = [{ ทะเบียนรถ: re }, { บริการ: re }, { ศูนย์: re }, { Fleet: re }, { Site: re }]
+    filter.$or = master.searchFields.map((f) => ({ [f]: re }))
   }
 
   const client = await clientPromise
-  const col = client.db(DELIVER_DB).collection(COLLECTION)
+  const col = client.db(DELIVER_DB).collection(master.collection)
 
   const [total, yms, rows] = await Promise.all([
     col.countDocuments(filter),
     col.distinct("YM"),
     col
       .find(filter, { projection: { _id: 0 } })
-      .sort({ YM: -1, ศูนย์: 1, บริการ: 1, ทะเบียนรถ: 1 })
+      .sort(master.sort)
       .skip(wantAll ? 0 : (page - 1) * pageSize)
       .limit(wantAll ? MAX_IMPORT_ROWS : pageSize)
       .toArray(),
@@ -80,6 +84,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     data: {
+      master: { key: master.key, name: master.name, description: master.description, collection: master.collection },
+      columns: master.columns,
       rows,
       total,
       page,
@@ -93,14 +99,17 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// POST /api/master/mastertruck — import (admin only)
-// Body: {rows: [...], defaultMonthKey: "YYYY-MM"}
-// Each month-year present in the file is REPLACED (delete + insert).
-export async function POST(req: NextRequest) {
+// POST /api/master/<key> — import (admin only). Each month present in the file
+// is REPLACED wholesale.
+export async function POST(req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   const perms = await getPerms()
   if (!perms.isAdmin) {
     return NextResponse.json({ error: "Forbidden — admin only" }, { status: 403 })
   }
+
+  const { key } = await ctx.params
+  const master = MASTERS[key]
+  if (!master) return NextResponse.json({ error: "Unknown master" }, { status: 404 })
 
   const body = (await req.json()) as {
     rows?: Array<Record<string, unknown>>
@@ -122,23 +131,32 @@ export async function POST(req: NextRequest) {
     if (raw == null || typeof raw !== "object") continue
     const row: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(raw)) {
-      const key = k.trim()
-      if (!key || key === "_id" || key.startsWith("__EMPTY") || key.startsWith("_imported")) continue
-      row[key] = typeof v === "string" ? v.trim() : v
+      const col = k.trim()
+      if (!col || col === "_id" || col.startsWith("__EMPTY") || col.startsWith("_imported")) continue
+      let value: unknown = typeof v === "string" ? v.trim() : v
+      if (master.numericColumns.includes(col) && value !== null && value !== "") {
+        const n = Number(value)
+        value = Number.isFinite(n) ? n : value
+      }
+      row[col] = value
     }
-    if (!row["ทะเบียนรถ"]) continue
+    if (master.requiredColumns.some((c) => row[c] == null || row[c] === "")) continue
     const ym = resolveYm(row["YM"], fallbackYm)
     row["YM"] = ym
-    let list = byYm.get(ym)
-    if (!list) {
-      list = []
-      byYm.set(ym, list)
-    }
-    list.push(row)
+    const list = byYm.get(ym)
+    if (list) list.push(row)
+    else byYm.set(ym, [row])
+  }
+
+  if (!byYm.size) {
+    return NextResponse.json(
+      { error: `ไม่พบแถวที่มี ${master.requiredColumns.join(", ")} — ตรวจหัวคอลัมน์ให้ตรง template` },
+      { status: 400 }
+    )
   }
 
   const client = await clientPromise
-  const col = client.db(DELIVER_DB).collection(COLLECTION)
+  const col = client.db(DELIVER_DB).collection(master.collection)
   await col.createIndex({ YM: 1 })
 
   const importedAt = new Date()

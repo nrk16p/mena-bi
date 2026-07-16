@@ -22,6 +22,7 @@ import {
   Scale,
   FolderCog,
   Banknote,
+  Fuel,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -116,6 +117,7 @@ const NAV_GROUPS: NavGroup[] = [
     activeBorder: "border-indigo-500",
     items: [
       { href: "/masterdata/mastertruck", label: "Master รถ", icon: Truck },
+      { href: "/masterdata/fuelrate", label: "Master ราคาน้ำมัน", icon: Fuel },
     ],
   },
   {
