@@ -7,6 +7,8 @@ import { DELIVER_DB } from "@/lib/trip-count/source"
 import { RUNS_COLLECTION, getFlow } from "@/lib/etl/flows"
 import { buildFlowMonthData, fetchFlowRows } from "@/lib/etl/executor"
 import { getRuleDoc } from "@/lib/etl/rules-store"
+import { reconcile, runEtlMonths } from "@/lib/etl/run-log"
+import { monthKeyOf } from "@/lib/trip-count/calculate"
 
 export const maxDuration = 300
 
@@ -72,56 +74,61 @@ export async function POST(req: NextRequest) {
 
   const ruleDoc = await getRuleDoc(db, flow.flowKey)
 
-  const results = []
-  for (const { year, month } of months) {
-    const startedAt = new Date()
-    const rows = await fetchFlowRows(db, flow, year, month)
-    const { monthKey, candidates, docs, excluded } = buildFlowMonthData(
-      rows,
-      flow,
-      ruleDoc.rules,
-      year,
-      month
-    )
-    const computedAt = new Date()
-
-    // Idempotent: replace the whole month-year slice
-    await targetCol.deleteMany({ monthKey })
-    for (let i = 0; i < docs.length; i += INSERT_BATCH) {
-      await targetCol.insertMany(
-        docs.slice(i, i + INSERT_BATCH).map((d) => ({
-          ...d,
-          rulesVersion: ruleDoc.version,
-          computedAt,
-        }))
+  const results = await runEtlMonths(db, {
+    flowKey: flow.flowKey,
+    months,
+    triggeredBy,
+    monthKeyOf,
+    processMonth: async (year, month, startedAt) => {
+      const rows = await fetchFlowRows(db, flow, year, month)
+      const { monthKey, candidates, docs, excluded } = buildFlowMonthData(
+        rows,
+        flow,
+        ruleDoc.rules,
+        year,
+        month
       )
-    }
+      reconcile(candidates, docs.length, excluded.total)
+      const computedAt = new Date()
 
-    await db.collection(RUNS_COLLECTION).insertOne({
-      flowKey: flow.flowKey,
-      monthKey,
-      rulesVersion: ruleDoc.version,
-      rowsScanned: rows.length,
-      uniqueLdt: candidates,
-      trips: docs.length,
-      excluded: excluded.total,
-      excludedByRule: excluded.byRule,
-      triggeredBy,
-      startedAt,
-      finishedAt: new Date(),
-      durationMs: Date.now() - startedAt.getTime(),
-    })
+      // Idempotent: replace the whole month-year slice
+      await targetCol.deleteMany({ monthKey })
+      for (let i = 0; i < docs.length; i += INSERT_BATCH) {
+        await targetCol.insertMany(
+          docs.slice(i, i + INSERT_BATCH).map((d) => ({
+            ...d,
+            rulesVersion: ruleDoc.version,
+            computedAt,
+          }))
+        )
+      }
 
-    results.push({
-      monthKey,
-      rulesVersion: ruleDoc.version,
-      rowsScanned: rows.length,
-      candidates,
-      kept: docs.length,
-      excluded: excluded.total,
-      excludedByRule: excluded.byRule,
-    })
-  }
+      await db.collection(RUNS_COLLECTION).insertOne({
+        flowKey: flow.flowKey,
+        monthKey,
+        status: "success",
+        rulesVersion: ruleDoc.version,
+        rowsScanned: rows.length,
+        uniqueLdt: candidates,
+        trips: docs.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+        triggeredBy,
+        startedAt,
+        finishedAt: new Date(),
+        durationMs: Date.now() - startedAt.getTime(),
+      })
+
+      return {
+        rulesVersion: ruleDoc.version,
+        rowsScanned: rows.length,
+        candidates,
+        kept: docs.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+      }
+    },
+  })
 
   return NextResponse.json({ success: true, data: results })
 }

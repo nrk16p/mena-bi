@@ -97,6 +97,14 @@ export async function GET() {
         updatedBy: ruleDoc.updatedBy ?? null,
         lastRuns,
       },
+      // Health of the most recent run. Runs written before status tracking
+      // have no `status` field and are treated as ok.
+      health: {
+        status: (lastRuns[0]?.status as string | undefined) === "error" ? "error" : lastRuns[0] ? "ok" : "none",
+        lastRunAt: lastRuns[0]?.finishedAt ?? null,
+        lastRunMonth: lastRuns[0]?.monthKey ?? null,
+        error: (lastRuns[0]?.error as string | undefined) ?? null,
+      },
       target: {
         collection: flow.targetCollection,
         href: flow.targetHref,

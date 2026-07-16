@@ -40,6 +40,12 @@ type FlowOverview = {
     updatedBy: string | null
     lastRuns: RunStat[]
   }
+  health: {
+    status: "ok" | "error" | "none"
+    lastRunAt: string | null
+    lastRunMonth: string | null
+    error: string | null
+  }
   target: {
     collection: string
     href: string
@@ -110,6 +116,27 @@ function PillarCard({
   )
 }
 
+function HealthBadge({ health }: { health: FlowOverview["health"] }) {
+  if (health.status === "none") return null
+  const ok = health.status === "ok"
+  return (
+    <span
+      title={
+        ok
+          ? `run ล่าสุดสำเร็จ (${health.lastRunMonth ?? ""}) ${fmtDate(health.lastRunAt)}`
+          : `run ล่าสุดล้มเหลว (${health.lastRunMonth ?? ""}): ${health.error ?? ""}`
+      }
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold
+        ${ok
+          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+          : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-500" : "bg-red-500"}`} />
+      {ok ? "ปกติ" : "ล้มเหลว"}
+    </span>
+  )
+}
+
 function StatLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -175,8 +202,9 @@ export default function FlowsPage() {
           className="mb-6 rounded-2xl border border-gray-200 dark:border-white/8 bg-gray-50/60 dark:bg-white/2 p-4"
         >
           {/* Flow header */}
-          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
             <h2 className="text-[15px] font-bold text-gray-900 dark:text-white">{flow.name}</h2>
+            <HealthBadge health={flow.health} />
             <p className="text-[12px] text-gray-400 dark:text-gray-500">{flow.description}</p>
           </div>
 
@@ -264,30 +292,42 @@ export default function FlowsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {flow.conditions.lastRuns.map((run, i) => (
+                  {flow.conditions.lastRuns.map((run, i) => {
+                    const failed = run.status === "error"
+                    const num = (v: unknown) => (typeof v === "number" ? v.toLocaleString() : "—")
+                    return (
                     <tr key={i} className="border-b border-gray-100 dark:border-white/5 last:border-0">
-                      <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-200">{run.monthKey}</td>
-                      <td className="px-3 py-2 text-gray-500 dark:text-gray-400">v{run.rulesVersion}</td>
-                      <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">
-                        {run.trips.toLocaleString()}
+                      <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-200">
+                        {run.monthKey}
+                        {failed && (
+                          <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300"
+                            title={String(run.error ?? "")}>ล้มเหลว</span>
+                        )}
                       </td>
-                      {flow.target.metric && (
-                        <td className="px-3 py-2 tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
-                          {typeof run[flow.target.metric.runField] === "number"
-                            ? (run[flow.target.metric.runField] as number).toLocaleString()
-                            : "-"}
+                      <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{run.rulesVersion ? `v${run.rulesVersion}` : "—"}</td>
+                      {failed ? (
+                        <td className="px-3 py-2 text-red-500 dark:text-red-400" colSpan={flow.target.metric ? 3 : 2}>
+                          {String(run.error ?? "error")}
                         </td>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">{num(run.trips)}</td>
+                          {flow.target.metric && (
+                            <td className="px-3 py-2 tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
+                              {num(run[flow.target.metric.runField])}
+                            </td>
+                          )}
+                          <td className="px-3 py-2 tabular-nums text-red-500 dark:text-red-400">{num(run.excluded)}</td>
+                        </>
                       )}
-                      <td className="px-3 py-2 tabular-nums text-red-500 dark:text-red-400">
-                        {run.excluded.toLocaleString()}
-                      </td>
                       <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{run.triggeredBy}</td>
                       <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{fmtDate(run.finishedAt)}</td>
                       <td className="px-3 py-2 tabular-nums text-gray-400 dark:text-gray-500">
-                        {(run.durationMs / 1000).toFixed(1)}s
+                        {typeof run.durationMs === "number" ? `${(run.durationMs / 1000).toFixed(1)}s` : "—"}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

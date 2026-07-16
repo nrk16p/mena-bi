@@ -3,10 +3,11 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
-import { buildMonthCosts } from "@/lib/trip-count/calculate"
+import { buildMonthCosts, monthKeyOf } from "@/lib/trip-count/calculate"
 import { COST_DATA_COLLECTION, DELIVER_DB, fetchDeliverRows } from "@/lib/trip-count/source"
 import { getRuleDoc } from "@/lib/etl/rules-store"
 import { RUNS_COLLECTION, STATIC_FLOWS } from "@/lib/etl/flows"
+import { reconcile, runEtlMonths } from "@/lib/etl/run-log"
 
 export const maxDuration = 300
 
@@ -83,61 +84,66 @@ export async function POST(req: NextRequest) {
   const ruleDoc = await getRuleDoc(db, FLOW_KEY)
   const defaultCategory = STATIC_FLOWS[FLOW_KEY].defaultCategory ?? "ค่าขนส่ง"
 
-  const results = []
-  for (const { year, month } of months) {
-    const startedAt = new Date()
-    const rows = await fetchDeliverRows(db, year, month)
-    const { monthKey, rowsInMonth, docs, totalAmount, byCategory, excluded } = buildMonthCosts(
-      rows,
-      year,
-      month,
-      ruleDoc.rules,
-      defaultCategory
-    )
-    const computedAt = new Date()
-
-    // Idempotent: replace the whole month-year slice
-    await col.deleteMany({ monthKey })
-    for (let i = 0; i < docs.length; i += INSERT_BATCH) {
-      await col.insertMany(
-        docs.slice(i, i + INSERT_BATCH).map((d) => ({
-          ...d,
-          rulesVersion: ruleDoc.version,
-          computedAt,
-        }))
+  const results = await runEtlMonths(db, {
+    flowKey: FLOW_KEY,
+    months,
+    triggeredBy,
+    monthKeyOf,
+    processMonth: async (year, month, startedAt) => {
+      const rows = await fetchDeliverRows(db, year, month)
+      const { monthKey, rowsInMonth, docs, totalAmount, byCategory, excluded } = buildMonthCosts(
+        rows,
+        year,
+        month,
+        ruleDoc.rules,
+        defaultCategory
       )
-    }
+      reconcile(rowsInMonth, docs.length, excluded.total)
+      const computedAt = new Date()
 
-    await db.collection(RUNS_COLLECTION).insertOne({
-      flowKey: FLOW_KEY,
-      monthKey,
-      rulesVersion: ruleDoc.version,
-      rowsScanned: rows.length,
-      uniqueLdt: rowsInMonth,
-      trips: docs.length,
-      totalAmount,
-      byCategory,
-      excluded: excluded.total,
-      excludedAmount: excluded.amount,
-      excludedByRule: excluded.byRule,
-      triggeredBy,
-      startedAt,
-      finishedAt: new Date(),
-      durationMs: Date.now() - startedAt.getTime(),
-    })
+      // Idempotent: replace the whole month-year slice
+      await col.deleteMany({ monthKey })
+      for (let i = 0; i < docs.length; i += INSERT_BATCH) {
+        await col.insertMany(
+          docs.slice(i, i + INSERT_BATCH).map((d) => ({
+            ...d,
+            rulesVersion: ruleDoc.version,
+            computedAt,
+          }))
+        )
+      }
 
-    results.push({
-      monthKey,
-      rulesVersion: ruleDoc.version,
-      rowsInMonth,
-      rowsKept: docs.length,
-      totalAmount,
-      byCategory,
-      excluded: excluded.total,
-      excludedAmount: excluded.amount,
-      excludedByRule: excluded.byRule,
-    })
-  }
+      await db.collection(RUNS_COLLECTION).insertOne({
+        flowKey: FLOW_KEY,
+        monthKey,
+        status: "success",
+        rulesVersion: ruleDoc.version,
+        rowsScanned: rows.length,
+        uniqueLdt: rowsInMonth,
+        trips: docs.length,
+        totalAmount,
+        byCategory,
+        excluded: excluded.total,
+        excludedAmount: excluded.amount,
+        excludedByRule: excluded.byRule,
+        triggeredBy,
+        startedAt,
+        finishedAt: new Date(),
+        durationMs: Date.now() - startedAt.getTime(),
+      })
+
+      return {
+        rulesVersion: ruleDoc.version,
+        rowsInMonth,
+        rowsKept: docs.length,
+        totalAmount,
+        byCategory,
+        excluded: excluded.total,
+        excludedAmount: excluded.amount,
+        excludedByRule: excluded.byRule,
+      }
+    },
+  })
 
   return NextResponse.json({ success: true, data: results })
 }

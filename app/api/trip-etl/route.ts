@@ -7,6 +7,7 @@ import { buildMonthTrips, monthKeyOf } from "@/lib/trip-count/calculate"
 import { DELIVER_DB, TRIP_DATA_COLLECTION, fetchDeliverRows } from "@/lib/trip-count/source"
 import { getRuleDoc } from "@/lib/etl/rules-store"
 import { RUNS_COLLECTION } from "@/lib/etl/flows"
+import { reconcile, runEtlMonths } from "@/lib/etl/run-log"
 
 export const maxDuration = 300
 
@@ -82,51 +83,56 @@ export async function POST(req: NextRequest) {
 
   const ruleDoc = await getRuleDoc(db, "trip")
 
-  const results = []
-  for (const { year, month } of months) {
-    const startedAt = new Date()
-    const rows = await fetchDeliverRows(db, year, month)
-    const { monthKey, uniqueLdt, trips, excluded } = buildMonthTrips(rows, year, month, ruleDoc.rules)
-    const computedAt = new Date()
+  const results = await runEtlMonths(db, {
+    flowKey: "trip",
+    months,
+    triggeredBy,
+    monthKeyOf,
+    processMonth: async (year, month, startedAt) => {
+      const rows = await fetchDeliverRows(db, year, month)
+      const { monthKey, uniqueLdt, trips, excluded } = buildMonthTrips(rows, year, month, ruleDoc.rules)
+      // Fail loud before touching the DB if the transform lost or double-counted
+      reconcile(uniqueLdt, trips.length, excluded.total)
+      const computedAt = new Date()
 
-    // Idempotent: replace the whole month-year slice with raw trip rows
-    await tripCol.deleteMany({ monthKey })
-    for (let i = 0; i < trips.length; i += INSERT_BATCH) {
-      await tripCol.insertMany(
-        trips.slice(i, i + INSERT_BATCH).map((t) => ({
-          ...t,
-          rulesVersion: ruleDoc.version,
-          computedAt,
-        }))
-      )
-    }
+      // Idempotent: replace the whole month-year slice with raw trip rows
+      await tripCol.deleteMany({ monthKey })
+      for (let i = 0; i < trips.length; i += INSERT_BATCH) {
+        await tripCol.insertMany(
+          trips.slice(i, i + INSERT_BATCH).map((t) => ({
+            ...t,
+            rulesVersion: ruleDoc.version,
+            computedAt,
+          }))
+        )
+      }
 
-    const run = {
-      flowKey: "trip",
-      monthKey,
-      rulesVersion: ruleDoc.version,
-      rowsScanned: rows.length,
-      uniqueLdt,
-      trips: trips.length,
-      excluded: excluded.total,
-      excludedByRule: excluded.byRule,
-      triggeredBy,
-      startedAt,
-      finishedAt: new Date(),
-      durationMs: Date.now() - startedAt.getTime(),
-    }
-    await db.collection(RUNS_COLLECTION).insertOne(run)
+      await db.collection(RUNS_COLLECTION).insertOne({
+        flowKey: "trip",
+        monthKey,
+        status: "success",
+        rulesVersion: ruleDoc.version,
+        rowsScanned: rows.length,
+        uniqueLdt,
+        trips: trips.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+        triggeredBy,
+        startedAt,
+        finishedAt: new Date(),
+        durationMs: Date.now() - startedAt.getTime(),
+      })
 
-    results.push({
-      monthKey: monthKeyOf(year, month),
-      rulesVersion: ruleDoc.version,
-      rowsScanned: rows.length,
-      uniqueLdt,
-      trips: trips.length,
-      excluded: excluded.total,
-      excludedByRule: excluded.byRule,
-    })
-  }
+      return {
+        rulesVersion: ruleDoc.version,
+        rowsScanned: rows.length,
+        uniqueLdt,
+        trips: trips.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+      }
+    },
+  })
 
   return NextResponse.json({ success: true, data: results })
 }
