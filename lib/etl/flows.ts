@@ -115,6 +115,26 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     dedupeField: null,
     columns: [],
   },
+  "driver-cost": {
+    flowKey: "driver-cost",
+    name: "Master ค่าเที่ยว พจส",
+    description: "รายงานค่าเที่ยว → ตัดแถวที่ไม่มีค่าเที่ยว → ค่าเที่ยว = พจส 1 + พจส 2 (รายแถว)",
+    sourceCollection: "driverCost",
+    sourcePipeline: "driver_cost",
+    targetCollection: "driverCostData",
+    ruleFields: ["บริการ", "โซน", "subcode", "LDT", "สาขา", "ประเภทรถร่วม", "ค่าเที่ยว"],
+    sourceHref: "/datapipeline/datasource",
+    conditionsHref: "/datapipeline/conditions?flow=driver-cost",
+    targetHref: "/datawarehouse/driver-cost",
+    dynamic: false,
+    unit: "แถว",
+    metric: { runField: "totalFee", label: "ค่าเที่ยวรวม", unit: "บาท" },
+    categories: [],
+    defaultCategory: null,
+    monthField: "ออก LDT",
+    dedupeField: null,
+    columns: [],
+  },
 }
 
 export function toFlowConfig(d: DynamicFlowDoc): FlowConfig {

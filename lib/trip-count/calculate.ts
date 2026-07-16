@@ -330,3 +330,124 @@ export function buildMonthCosts(
     excluded: { ...excluded, amount: round(excluded.amount) },
   };
 }
+
+// ── Master ค่าเที่ยว พจส (driverCost) ─────────────────────────────────────────
+
+import type { DriverCostRow } from "./source";
+
+// One driver-fee row stored raw in mena-bi.driverCostData
+export interface DriverCostDoc {
+  monthKey: string;
+  year: number;
+  month: number;
+  issueDate: string | Date | null;
+  ldt: string | null;
+  service: string;
+  subcode: string | null;
+  zone: string | null;
+  branch: string | null;
+  partnerType: string | null;
+  driver1: string | null;
+  driver2: string | null;
+  fee1: number;
+  fee2: number;
+  fee: number; // ค่าเที่ยว = พจส 1 + พจส 2
+}
+
+export interface MonthDriverCostResult {
+  monthKey: string;
+  year: number;
+  month: number;
+  rowsInMonth: number;
+  docs: DriverCostDoc[];
+  totalFee: number;
+  byPartnerType: Record<string, { rows: number; fee: number }>;
+  excluded: {
+    total: number;
+    byRule: Record<string, number>;
+  };
+}
+
+// ค่าเที่ยว is computed BEFORE the rules run, so a rule can test it — that is
+// how "ค่าเที่ยว พจส 1 + พจส 2 = 0 → ตัด" stays editable from the UI.
+export function toDriverCostRuleRecord(row: DriverCostRow, fee: number): RuleRecord {
+  return {
+    บริการ: row.service ?? "",
+    โซน: row.zone ?? "",
+    subcode: row.subcode ?? "",
+    LDT: row.ldt ?? "",
+    สาขา: row.branch ?? "",
+    ประเภทรถร่วม: row.partnerType ?? "",
+    ค่าเที่ยว: String(fee),
+  };
+}
+
+// Money is counted PER ROW (no LDT dedupe) — each row is its own driver fee.
+export function buildMonthDriverCosts(
+  rows: Iterable<DriverCostRow>,
+  year: number,
+  month: number,
+  rules: EtlRule[]
+): MonthDriverCostResult {
+  const monthKey = monthKeyOf(year, month);
+  const docs: DriverCostDoc[] = [];
+  const byPartnerType: Record<string, { rows: number; fee: number }> = {};
+  const excluded = { total: 0, byRule: {} as Record<string, number> };
+  let rowsInMonth = 0;
+  let totalFee = 0;
+
+  for (const row of rows) {
+    const issued = parseIssueMonth(row.issueDate);
+    if (!issued || issued.year !== year || issued.month !== month) continue;
+    rowsInMonth += 1;
+
+    const fee1 = toNumber(row.fee1);
+    const fee2 = toNumber(row.fee2);
+    const fee = Math.round((fee1 + fee2) * 100) / 100;
+
+    const cutBy = applyRules(toDriverCostRuleRecord(row, fee), rules);
+    if (cutBy) {
+      excluded.total += 1;
+      excluded.byRule[cutBy.label] = (excluded.byRule[cutBy.label] ?? 0) + 1;
+      continue;
+    }
+
+    const partnerType = (row.partnerType ?? "").trim() || "(ไม่ระบุ)";
+    totalFee += fee;
+    const bucket = (byPartnerType[partnerType] ??= { rows: 0, fee: 0 });
+    bucket.rows += 1;
+    bucket.fee += fee;
+
+    docs.push({
+      monthKey,
+      year,
+      month,
+      issueDate: row.issueDate,
+      ldt: row.ldt,
+      service: (row.service ?? "").trim() || "(ไม่ระบุบริการ)",
+      subcode: row.subcode,
+      zone: row.zone,
+      branch: row.branch,
+      partnerType: row.partnerType,
+      driver1: row.driver1,
+      driver2: row.driver2,
+      fee1,
+      fee2,
+      fee,
+    });
+  }
+
+  const round = (n: number) => Math.round(n * 100) / 100;
+  for (const b of Object.values(byPartnerType)) b.fee = round(b.fee);
+
+  return {
+    monthKey,
+    year,
+    month,
+    rowsInMonth,
+    docs,
+    totalFee: round(totalFee),
+    byPartnerType,
+    excluded,
+  };
+}

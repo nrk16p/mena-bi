@@ -127,10 +127,27 @@ export function buildCostSeedRules(): EtlRule[] {
   ]
 }
 
+// Master ค่าเที่ยว พจส: ค่าเที่ยว is computed (พจส 1 + พจส 2) before the rules
+// run, so the "no fee at all" cut is a single editable rule.
+export function buildDriverCostSeedRules(): EtlRule[] {
+  return [
+    {
+      id: "no-fee",
+      label: "ตัดแถวที่ไม่มีค่าเที่ยว (พจส 1 + พจส 2 = 0)",
+      field: "ค่าเที่ยว",
+      operator: "equals",
+      values: ["0"],
+      enabled: true,
+      action: "exclude",
+    },
+  ]
+}
+
 const SEEDS: Record<string, () => EtlRule[]> = {
   trip: buildTripSeedRules,
   weight: buildTripSeedRules, // same cut conditions as trip, editable independently
   "transport-cost": buildCostSeedRules,
+  "driver-cost": buildDriverCostSeedRules,
 }
 
 // Load the rule doc for a flow, seeding version 1 on first use.

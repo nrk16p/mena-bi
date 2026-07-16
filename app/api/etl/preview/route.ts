@@ -3,8 +3,13 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
-import { DELIVER_DB, fetchDeliverRows } from "@/lib/trip-count/source"
-import { buildMonthCosts, buildMonthTrips, buildMonthWeights } from "@/lib/trip-count/calculate"
+import { DELIVER_DB, fetchDeliverRows, fetchDriverCostRows } from "@/lib/trip-count/source"
+import {
+  buildMonthCosts,
+  buildMonthDriverCosts,
+  buildMonthTrips,
+  buildMonthWeights,
+} from "@/lib/trip-count/calculate"
 import { validateRules } from "@/lib/etl/engine"
 import { SOURCES, STATIC_FLOWS, getFlow, toFlowConfig, type FlowConfig } from "@/lib/etl/flows"
 import { buildFlowMonthData, fetchFlowRows } from "@/lib/etl/executor"
@@ -60,6 +65,27 @@ export async function POST(req: NextRequest) {
         rowsScanned: rows.length,
         uniqueLdt,
         trips: trips.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+      },
+    })
+  }
+  if (body.flowKey === "driver-cost") {
+    const rows = await fetchDriverCostRows(db, year, month)
+    const { monthKey, rowsInMonth, docs, totalFee, excluded } = buildMonthDriverCosts(
+      rows,
+      year,
+      month,
+      body.rules
+    )
+    return NextResponse.json({
+      success: true,
+      data: {
+        monthKey,
+        rowsScanned: rows.length,
+        uniqueLdt: rowsInMonth,
+        trips: docs.length,
+        totalAmount: totalFee,
         excluded: excluded.total,
         excludedByRule: excluded.byRule,
       },
