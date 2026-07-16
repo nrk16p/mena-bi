@@ -45,6 +45,18 @@ function ymToMonthKey(ym: number): string {
 
 const round = (n: number) => Math.round(n * 100) / 100
 
+function dedupeTruckRows<T extends Record<string, unknown>>(rows: T[]): T[] {
+  const seen = new Set<string>()
+
+  return rows.filter((row) => {
+    const plate = row["ทะเบียนรถ"] != null ? String(row["ทะเบียนรถ"]) : ""
+    if (!plate) return true
+    if (seen.has(plate)) return false
+    seen.add(plate)
+    return true
+  })
+}
+
 export async function buildMonthSnapshot(
   db: Db,
   ym: number
@@ -57,8 +69,11 @@ export async function buildMonthSnapshot(
 }> {
   const monthKey = ymToMonthKey(ym)
 
-  const [truckRows, weightRows, costRows] = await Promise.all([
-    db.collection("mastertruck").find({ YM: ym }, { projection: { _id: 0 } }).toArray(),
+  const truckRows = dedupeTruckRows(
+    await db.collection("mastertruck").find({ YM: ym }, { projection: { _id: 0 } }).toArray()
+  )
+
+  const [weightRows, costRows] = await Promise.all([
     db
       .collection("weightData")
       .find(
@@ -136,23 +151,23 @@ export async function buildMonthSnapshot(
       Type: t["Type"] != null ? String(t["Type"]) : null,
       weight: weightAgg
         ? {
-            trips: weightAgg.trips,
-            totalWeight: round(weightAgg.totalWeight),
-            totalWeightOrigin: round(weightAgg.totalWeightOrigin),
-            totalWeightDest: round(weightAgg.totalWeightDest),
-          }
+          trips: weightAgg.trips,
+          totalWeight: round(weightAgg.totalWeight),
+          totalWeightOrigin: round(weightAgg.totalWeightOrigin),
+          totalWeightDest: round(weightAgg.totalWeightDest),
+        }
         : null,
       cost: costAgg
         ? {
-            rows: costAgg.rows,
-            total: round(costAgg.total),
-            byCategory: Object.fromEntries(
-              Object.entries(costAgg.byCategory).map(([k, v]) => [
-                k,
-                { rows: v.rows, amount: round(v.amount) },
-              ])
-            ),
-          }
+          rows: costAgg.rows,
+          total: round(costAgg.total),
+          byCategory: Object.fromEntries(
+            Object.entries(costAgg.byCategory).map(([k, v]) => [
+              k,
+              { rows: v.rows, amount: round(v.amount) },
+            ])
+          ),
+        }
         : null,
       snapshotAt,
     }
