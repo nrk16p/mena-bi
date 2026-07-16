@@ -7,6 +7,7 @@ import { DELIVER_DB, fetchDeliverRows, fetchDriverCostRows } from "@/lib/trip-co
 import {
   buildMonthCosts,
   buildMonthDriverCosts,
+  buildMonthFuelQty,
   buildMonthTrips,
   buildMonthWeights,
 } from "@/lib/trip-count/calculate"
@@ -65,6 +66,26 @@ export async function POST(req: NextRequest) {
         rowsScanned: rows.length,
         uniqueLdt,
         trips: trips.length,
+        excluded: excluded.total,
+        excludedByRule: excluded.byRule,
+      },
+    })
+  }
+  if (body.flowKey === "fuel-qty") {
+    const rows = await fetchDriverCostRows(db, year, month)
+    const { monthKey, rowsInMonth, docs, totalOil, totalNgv, byFuelType, excluded } =
+      buildMonthFuelQty(rows, year, month, body.rules)
+    return NextResponse.json({
+      success: true,
+      data: {
+        monthKey,
+        rowsScanned: rows.length,
+        uniqueLdt: rowsInMonth,
+        trips: docs.length,
+        byCategory: {
+          Oil: { rows: byFuelType.Oil?.rows ?? 0, amount: totalOil },
+          NGV: { rows: byFuelType.NGV?.rows ?? 0, amount: totalNgv },
+        },
         excluded: excluded.total,
         excludedByRule: excluded.byRule,
       },

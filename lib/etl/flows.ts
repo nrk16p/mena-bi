@@ -135,6 +135,27 @@ export const STATIC_FLOWS: Record<string, FlowConfig> = {
     dedupeField: null,
     columns: [],
   },
+  "fuel-qty": {
+    flowKey: "fuel-qty",
+    name: "Master จำนวนเชื้อเพลิง",
+    description: "รายงานค่าเที่ยว → ตัดแถวที่ไม่มีเชื้อเพลิง → Oil = Rate น้ำมัน พจส 1+2, NGV = Rate NGV พจส 1+2",
+    sourceCollection: "driverCost",
+    sourcePipeline: "driver_cost",
+    targetCollection: "fuelQtyData",
+    ruleFields: ["บริการ", "โซน", "subcode", "LDT", "สาขา", "ประเภทรถร่วม", "ประเภทเชื้อเพลิง", "จำนวนเชื้อเพลิง"],
+    sourceHref: "/datapipeline/datasource",
+    conditionsHref: "/datapipeline/conditions?flow=fuel-qty",
+    targetHref: "/datawarehouse/fuel-qty",
+    dynamic: false,
+    unit: "แถว",
+    // Oil (ลิตร) and NGV (กก.) are different units — no combined headline
+    metric: { runField: "totalOil", label: "Oil รวม", unit: "" },
+    categories: [],
+    defaultCategory: null,
+    monthField: "ออก LDT",
+    dedupeField: null,
+    columns: [],
+  },
 }
 
 export function toFlowConfig(d: DynamicFlowDoc): FlowConfig {

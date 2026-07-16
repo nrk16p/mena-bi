@@ -451,3 +451,145 @@ export function buildMonthDriverCosts(
     excluded,
   };
 }
+
+// ── Master จำนวนเชื้อเพลิง (driverCost) ───────────────────────────────────────
+
+// One fuel-quantity row stored raw in mena-bi.fuelQtyData
+export interface FuelQtyDoc {
+  monthKey: string;
+  year: number;
+  month: number;
+  issueDate: string | Date | null;
+  ldt: string | null;
+  service: string;
+  subcode: string | null;
+  zone: string | null;
+  branch: string | null;
+  partnerType: string | null;
+  plateHead: string | null;
+  oil1: number; // Rate น้ำมัน พจส 1
+  oil2: number; // Rate น้ำมัน พจส 2
+  oil: number; // Oil = พจส 1 + พจส 2
+  ngv1: number; // Rate NGV พจส 1
+  ngv2: number; // Rate NGV พจส 2
+  ngv: number; // NGV = พจส 1 + พจส 2
+  fuelType: string; // Oil | NGV | (ไม่ระบุ) — no row ever carries both
+}
+
+export interface MonthFuelQtyResult {
+  monthKey: string;
+  year: number;
+  month: number;
+  rowsInMonth: number;
+  docs: FuelQtyDoc[];
+  totalOil: number;
+  totalNgv: number;
+  byFuelType: Record<string, { rows: number; qty: number }>;
+  excluded: {
+    total: number;
+    byRule: Record<string, number>;
+  };
+}
+
+// Oil/NGV/จำนวนเชื้อเพลิง are computed before the rules run so a rule can test
+// them — that is how "ไม่มีเชื้อเพลิง (= 0) → ตัด" stays editable from the UI.
+export function toFuelQtyRuleRecord(
+  row: DriverCostRow,
+  oil: number,
+  ngv: number,
+  fuelType: string
+): RuleRecord {
+  return {
+    บริการ: row.service ?? "",
+    โซน: row.zone ?? "",
+    subcode: row.subcode ?? "",
+    LDT: row.ldt ?? "",
+    สาขา: row.branch ?? "",
+    ประเภทรถร่วม: row.partnerType ?? "",
+    ประเภทเชื้อเพลิง: fuelType,
+    จำนวนเชื้อเพลิง: String(Math.round((oil + ngv) * 100) / 100),
+  };
+}
+
+// Fuel quantity is per row (no LDT dedupe). Oil and NGV are kept as separate
+// totals — they are different units and no row carries both.
+export function buildMonthFuelQty(
+  rows: Iterable<DriverCostRow>,
+  year: number,
+  month: number,
+  rules: EtlRule[]
+): MonthFuelQtyResult {
+  const monthKey = monthKeyOf(year, month);
+  const docs: FuelQtyDoc[] = [];
+  const byFuelType: Record<string, { rows: number; qty: number }> = {};
+  const excluded = { total: 0, byRule: {} as Record<string, number> };
+  let rowsInMonth = 0;
+  let totalOil = 0;
+  let totalNgv = 0;
+
+  const round = (n: number) => Math.round(n * 100) / 100;
+
+  for (const row of rows) {
+    const issued = parseIssueMonth(row.issueDate);
+    if (!issued || issued.year !== year || issued.month !== month) continue;
+    rowsInMonth += 1;
+
+    const oil1 = toNumber(row.oil1);
+    const oil2 = toNumber(row.oil2);
+    const ngv1 = toNumber(row.ngv1);
+    const ngv2 = toNumber(row.ngv2);
+    const oil = round(oil1 + oil2);
+    const ngv = round(ngv1 + ngv2);
+    // ≠ 0, not > 0: ชดเชยเชื้อเพลิง rows carry negative adjustments and are
+    // still Oil/NGV rows. No row ever has both, so the split stays clean.
+    const fuelType = oil !== 0 ? "Oil" : ngv !== 0 ? "NGV" : "(ไม่ระบุ)";
+
+    const cutBy = applyRules(toFuelQtyRuleRecord(row, oil, ngv, fuelType), rules);
+    if (cutBy) {
+      excluded.total += 1;
+      excluded.byRule[cutBy.label] = (excluded.byRule[cutBy.label] ?? 0) + 1;
+      continue;
+    }
+
+    totalOil += oil;
+    totalNgv += ngv;
+    const bucket = (byFuelType[fuelType] ??= { rows: 0, qty: 0 });
+    bucket.rows += 1;
+    bucket.qty += oil + ngv;
+
+    docs.push({
+      monthKey,
+      year,
+      month,
+      issueDate: row.issueDate,
+      ldt: row.ldt,
+      service: (row.service ?? "").trim() || "(ไม่ระบุบริการ)",
+      subcode: row.subcode,
+      zone: row.zone,
+      branch: row.branch,
+      partnerType: row.partnerType,
+      plateHead: row.plateHead,
+      oil1,
+      oil2,
+      oil,
+      ngv1,
+      ngv2,
+      ngv,
+      fuelType,
+    });
+  }
+
+  for (const b of Object.values(byFuelType)) b.qty = round(b.qty);
+
+  return {
+    monthKey,
+    year,
+    month,
+    rowsInMonth,
+    docs,
+    totalOil: round(totalOil),
+    totalNgv: round(totalNgv),
+    byFuelType,
+    excluded,
+  };
+}

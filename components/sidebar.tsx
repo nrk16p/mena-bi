@@ -23,6 +23,7 @@ import {
   FolderCog,
   Banknote,
   Fuel,
+  Droplets,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -105,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/datawarehouse/weight", label: "Master น้ำหนัก", icon: Scale },
       { href: "/datawarehouse/transport-cost", label: "Master ค่าขนส่ง", icon: Banknote },
       { href: "/datawarehouse/driver-cost", label: "Master ค่าเที่ยว พจส", icon: Users },
+      { href: "/datawarehouse/fuel-qty", label: "Master จำนวนเชื้อเพลิง", icon: Droplets },
     ],
   },
   {

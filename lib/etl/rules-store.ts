@@ -143,11 +143,28 @@ export function buildDriverCostSeedRules(): EtlRule[] {
   ]
 }
 
+// Master จำนวนเชื้อเพลิง: จำนวนเชื้อเพลิง (Oil + NGV) is computed before the
+// rules run, so the "no fuel at all" cut is a single editable rule.
+export function buildFuelQtySeedRules(): EtlRule[] {
+  return [
+    {
+      id: "no-fuel",
+      label: "ตัดแถวที่ไม่มีเชื้อเพลิง (Oil + NGV = 0)",
+      field: "จำนวนเชื้อเพลิง",
+      operator: "equals",
+      values: ["0"],
+      enabled: true,
+      action: "exclude",
+    },
+  ]
+}
+
 const SEEDS: Record<string, () => EtlRule[]> = {
   trip: buildTripSeedRules,
   weight: buildTripSeedRules, // same cut conditions as trip, editable independently
   "transport-cost": buildCostSeedRules,
   "driver-cost": buildDriverCostSeedRules,
+  "fuel-qty": buildFuelQtySeedRules,
 }
 
 // Load the rule doc for a flow, seeding version 1 on first use.

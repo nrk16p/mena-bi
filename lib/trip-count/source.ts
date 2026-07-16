@@ -8,6 +8,7 @@ export const WEIGHT_DATA_COLLECTION = "weightData";
 export const COST_DATA_COLLECTION = "transportCost";
 export const DRIVER_COST_COLLECTION = "driverCost";
 export const DRIVER_COST_DATA_COLLECTION = "driverCostData";
+export const FUEL_QTY_DATA_COLLECTION = "fuelQtyData";
 
 // Fetch slim rows for a target month via the (_year,_month,_branch) index.
 // Includes ±1 neighbouring file-months because ออก LDT can fall outside the
@@ -73,10 +74,15 @@ export interface DriverCostRow {
   zone: string | null;
   branch: string | null;
   partnerType: string | null; // ประเภทรถร่วม
+  plateHead: string | null; // หัว
   driver1: string | null; // พจส1
   driver2: string | null; // พจส2
   fee1: number | string | null; // ค่าเที่ยว พจส 1
   fee2: number | string | null; // ค่าเที่ยว พจส 2
+  oil1: number | string | null; // Rate น้ำมัน พจส 1
+  oil2: number | string | null; // Rate น้ำมัน พจส 2
+  ngv1: number | string | null; // Rate NGV พจส 1
+  ngv2: number | string | null; // Rate NGV พจส 2
   issueDate: string | Date | null; // ออก LDT
 }
 
@@ -102,10 +108,15 @@ export async function fetchDriverCostRows(
         subcode: 1,
         โซน: 1,
         ประเภทรถร่วม: 1,
+        หัว: 1,
         พจส1: 1,
         พจส2: 1,
         "ค่าเที่ยว พจส 1": 1,
         "ค่าเที่ยว พจส 2": 1,
+        "Rate น้ำมัน พจส 1": 1,
+        "Rate น้ำมัน พจส 2": 1,
+        "Rate NGV พจส 1": 1,
+        "Rate NGV พจส 2": 1,
         LDT: 1,
         _ldt_base: 1,
         _branch: 1,
@@ -123,10 +134,15 @@ export async function fetchDriverCostRows(
       zone: d["โซน"] != null ? String(d["โซน"]) : null,
       branch: d["_branch"] != null ? String(d["_branch"]) : null,
       partnerType: d["ประเภทรถร่วม"] != null ? String(d["ประเภทรถร่วม"]) : null,
+      plateHead: d["หัว"] != null ? String(d["หัว"]) : null,
       driver1: d["พจส1"] != null ? String(d["พจส1"]) : null,
       driver2: d["พจส2"] != null ? String(d["พจส2"]) : null,
       fee1: (d["ค่าเที่ยว พจส 1"] as number | string) ?? null,
       fee2: (d["ค่าเที่ยว พจส 2"] as number | string) ?? null,
+      oil1: (d["Rate น้ำมัน พจส 1"] as number | string) ?? null,
+      oil2: (d["Rate น้ำมัน พจส 2"] as number | string) ?? null,
+      ngv1: (d["Rate NGV พจส 1"] as number | string) ?? null,
+      ngv2: (d["Rate NGV พจส 2"] as number | string) ?? null,
       issueDate: (d["ออก LDT"] as string | Date) ?? null,
     });
   }
