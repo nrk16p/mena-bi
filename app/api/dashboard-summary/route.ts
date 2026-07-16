@@ -5,18 +5,14 @@ import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
 import { DELIVER_DB } from "@/lib/trip-count/source"
 import { MART_DATA_COLLECTION } from "@/lib/mart/engine"
+import { runModelQuery } from "@/lib/model/query"
 
 const MART_KEY = "truck-summary"
-const REVENUE_CATS = ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"]
-const num = (v: unknown) => {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : 0
-}
 const round = (n: number) => Math.round(n * 100) / 100
 
 // GET /api/dashboard-summary — executive KPIs for the latest available month:
-// Performance (เที่ยว, น้ำหนัก), Revenue (3 categories), revenue by Fleet, and a
-// month-over-month revenue trend. Computed in JS over the truck-summary fact.
+// Performance (เที่ยว, น้ำหนัก), Revenue (3 categories + ratios), revenue by
+// Fleet, and a month-over-month trend. All computed by the measure engine.
 export async function GET() {
   const session = await getServerSession(authOptions)
   const perms = await getUserPermissions(session?.user?.email)
@@ -25,7 +21,8 @@ export async function GET() {
   }
 
   const client = await clientPromise
-  const col = client.db(DELIVER_DB).collection(MART_DATA_COLLECTION)
+  const db = client.db(DELIVER_DB)
+  const col = db.collection(MART_DATA_COLLECTION)
 
   const months = (await col.distinct("monthKey", { martKey: MART_KEY })).sort()
   if (!months.length) {
@@ -33,53 +30,29 @@ export async function GET() {
   }
   const month = months[months.length - 1]
 
-  const rows = await col
-    .find(
-      { martKey: MART_KEY, monthKey: month },
-      { projection: { _id: 0, ทะเบียนรถ: 1, Fleet: 1, จำนวนเที่ยว: 1, น้ำหนักรวม: 1, ค่าขนส่งแยกประเภท: 1 } }
-    )
-    .toArray()
+  // Grand totals + ratios for the latest month.
+  const totals = await runModelQuery(db, {
+    monthKey: month,
+    dimensions: [],
+    measures: ["เที่ยว", "น้ำหนัก", "ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ", "รายได้รวม", "บาท/เที่ยว", "น้ำหนัก/เที่ยว"],
+  })
+  const t = totals.total.values
 
-  let trips = 0
-  let weight = 0
-  const rev: Record<string, number> = { ค่าขนส่ง: 0, ค่าโอนย้าย: 0, "ประกันรายได้ + ค่าอื่นๆ": 0 }
-  const byFleet = new Map<string, number>()
-  const trucks = new Set<string>()
+  // Revenue by Fleet.
+  const byFleetQ = await runModelQuery(db, {
+    monthKey: month,
+    dimensions: ["Fleet"],
+    measures: ["รายได้รวม"],
+    sortBy: "รายได้รวม",
+  })
 
-  for (const r of rows) {
-    trips += num(r["จำนวนเที่ยว"])
-    weight += num(r["น้ำหนักรวม"])
-    if (r["ทะเบียนรถ"]) trucks.add(String(r["ทะเบียนรถ"]))
-    const byCat = (r["ค่าขนส่งแยกประเภท"] ?? {}) as Record<string, number>
-    let rowRev = 0
-    for (const cat of REVENUE_CATS) {
-      const v = num(byCat[cat])
-      rev[cat] += v
-      rowRev += v
-    }
-    const fleet = String(r["Fleet"] ?? "(ไม่ระบุ)")
-    byFleet.set(fleet, (byFleet.get(fleet) ?? 0) + rowRev)
-  }
-  const revTotal = REVENUE_CATS.reduce((a, c) => a + rev[c], 0)
+  const trucks = (await col.distinct("ทะเบียนรถ", { martKey: MART_KEY, monthKey: month })).filter(Boolean).length
 
-  // MoM revenue trend across every mart month
+  // MoM trend across every mart month.
   const trend: Array<{ monthKey: string; revenue: number; trips: number }> = []
   for (const mk of months) {
-    const agg = await col
-      .aggregate([
-        { $match: { martKey: MART_KEY, monthKey: mk } },
-        {
-          $project: {
-            trips: "$จำนวนเที่ยว",
-            rev: {
-              $sum: REVENUE_CATS.map((c) => ({ $ifNull: [`$ค่าขนส่งแยกประเภท.${c}`, 0] })),
-            },
-          },
-        },
-        { $group: { _id: null, revenue: { $sum: "$rev" }, trips: { $sum: "$trips" } } },
-      ])
-      .toArray()
-    trend.push({ monthKey: mk, revenue: round(agg[0]?.revenue ?? 0), trips: agg[0]?.trips ?? 0 })
+    const q = await runModelQuery(db, { monthKey: mk, dimensions: [], measures: ["รายได้รวม", "เที่ยว"] })
+    trend.push({ monthKey: mk, revenue: q.total.values["รายได้รวม"] ?? 0, trips: q.total.values["เที่ยว"] ?? 0 })
   }
 
   return NextResponse.json({
@@ -87,17 +60,19 @@ export async function GET() {
     data: {
       month,
       months,
-      trucks: trucks.size,
-      performance: { เที่ยว: trips, น้ำหนัก: round(weight) },
+      trucks,
+      performance: { เที่ยว: t["เที่ยว"] ?? 0, น้ำหนัก: t["น้ำหนัก"] ?? 0 },
       revenue: {
-        ค่าขนส่ง: round(rev["ค่าขนส่ง"]),
-        ค่าโอนย้าย: round(rev["ค่าโอนย้าย"]),
-        "ประกันรายได้ + ค่าอื่นๆ": round(rev["ประกันรายได้ + ค่าอื่นๆ"]),
-        รวม: round(revTotal),
+        ค่าขนส่ง: t["ค่าขนส่ง"] ?? 0,
+        ค่าโอนย้าย: t["ค่าโอนย้าย"] ?? 0,
+        "ประกันรายได้ + ค่าอื่นๆ": t["ประกันรายได้ + ค่าอื่นๆ"] ?? 0,
+        รวม: t["รายได้รวม"] ?? 0,
       },
-      byFleet: [...byFleet.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([fleet, revenue]) => ({ fleet, revenue: round(revenue) })),
+      ratios: {
+        "บาท/เที่ยว": round(t["บาท/เที่ยว"] ?? 0),
+        "น้ำหนัก/เที่ยว": round(t["น้ำหนัก/เที่ยว"] ?? 0),
+      },
+      byFleet: byFleetQ.rows.map((r) => ({ fleet: r.dims["Fleet"] ?? "(ไม่ระบุ)", revenue: r.values["รายได้รวม"] ?? 0 })),
       trend,
     },
   })

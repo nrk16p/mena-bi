@@ -172,7 +172,8 @@ export default function ModelViewPage() {
       <p className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">
         โมเดลนี้คือ schema เบื้องหลัง Dashboard/Pivot — <b>fact</b> (สรุปรายรถ) เชื่อมเข้า dimension แบบ snowflake
         (<code className="rounded bg-gray-100 dark:bg-white/8 px-1">dim_truck → dim_fleet</code>).
-        ขั้นถัดไปคือ measure engine เพื่อให้ dashboard เลือก measure/มิติ ได้เองจากโมเดลนี้.
+        <b> measure engine</b> ทำงานจากโมเดลนี้แล้ว — Dashboard และ Pivot คำนวณ measure (รวมสัดส่วน เช่น บาท/เที่ยว)
+        และมิติ ผ่าน <code className="rounded bg-gray-100 dark:bg-white/8 px-1">/api/model/query</code> จากนิยามเดียวกัน.
       </p>
     </div>
   )

@@ -12,13 +12,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { ArrowRight, Banknote, Gauge, Loader2, Route, Scale, Truck } from "lucide-react"
+import { ArrowRight, Banknote, Gauge, Loader2, Route, Scale, TrendingUp, Truck } from "lucide-react"
 
 type Summary = {
   month: string | null
   months: string[]
   trucks: number
   performance: { เที่ยว: number; น้ำหนัก: number }
+  ratios?: { "บาท/เที่ยว": number; "น้ำหนัก/เที่ยว": number }
   revenue: { ค่าขนส่ง: number; ค่าโอนย้าย: number; "ประกันรายได้ + ค่าอื่นๆ": number; รวม: number }
   byFleet: Array<{ fleet: string; revenue: number }>
   trend: Array<{ monthKey: string; revenue: number; trips: number }>
@@ -118,6 +119,12 @@ export function Dashboard() {
           <Kpi label="น้ำหนักรวม" value={qty(data.performance["น้ำหนัก"])} icon={Scale} accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-950/50 dark:text-cyan-400" />
           <Kpi label="จำนวนรถ" value={qty(data.trucks)} icon={Truck} accent="bg-cyan-100 text-cyan-600 dark:bg-cyan-950/50 dark:text-cyan-400" />
         </div>
+        {data.ratios && (
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Kpi label="รายได้/เที่ยว (บาท)" value={money(data.ratios["บาท/เที่ยว"])} sub="รายได้รวม ÷ เที่ยว" icon={TrendingUp} accent="bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400" />
+            <Kpi label="น้ำหนัก/เที่ยว" value={qty(data.ratios["น้ำหนัก/เที่ยว"])} sub="น้ำหนักรวม ÷ เที่ยว" icon={Scale} accent="bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400" />
+          </div>
+        )}
       </div>
 
       {/* Revenue */}
