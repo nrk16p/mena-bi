@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   if (zone) filter.zone = zone
   if (q) {
     const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
-    filter.$or = [{ ldt: re }, { subcode: re }, { driver1: re }, { driver2: re }]
+    filter.$or = [{ ldt: re }, { subcode: re }, { driver1: re }, { driver2: re }, { plateHead: re }]
   }
 
   const client = await clientPromise

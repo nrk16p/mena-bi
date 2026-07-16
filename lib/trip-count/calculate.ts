@@ -347,6 +347,7 @@ export interface DriverCostDoc {
   zone: string | null;
   branch: string | null;
   partnerType: string | null;
+  plateHead: string | null; // หัว
   driver1: string | null;
   driver2: string | null;
   fee1: number;
@@ -429,6 +430,7 @@ export function buildMonthDriverCosts(
       zone: row.zone,
       branch: row.branch,
       partnerType: row.partnerType,
+      plateHead: row.plateHead,
       driver1: row.driver1,
       driver2: row.driver2,
       fee1,

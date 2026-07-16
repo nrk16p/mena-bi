@@ -22,6 +22,7 @@ type DriverCostRow = {
   zone: string | null
   branch: string | null
   partnerType: string | null
+  plateHead: string | null
   driver1: string | null
   driver2: string | null
   fee1: number
@@ -53,6 +54,7 @@ const COLUMNS: Array<{ key: keyof DriverCostRow; label: string; numeric?: boolea
   { key: "zone", label: "โซน" },
   { key: "branch", label: "สาขา" },
   { key: "partnerType", label: "ประเภทรถร่วม" },
+  { key: "plateHead", label: "หัว" },
   { key: "driver1", label: "พจส1" },
   { key: "driver2", label: "พจส2" },
   { key: "fee1", label: "ค่าเที่ยว พจส 1", numeric: true },
