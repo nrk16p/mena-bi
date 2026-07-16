@@ -14,14 +14,12 @@ import {
   LogOut,
   Shield,
   Database,
-  Table2,
+  Waypoints,
   Warehouse,
   Truck,
   Workflow,
   SlidersHorizontal,
-  Scale,
   FolderCog,
-  Banknote,
   Fuel,
   Droplets,
 } from "lucide-react"
@@ -55,12 +53,13 @@ type NavGroup = {
   label:          string
   groupIcon:      React.ElementType
   permissionKey?: string
-  dot:            string
+  dot:            string   // accent color, also used as the active indicator bar
   iconColor:      string   // group header icon color
   activeBg:       string
   activeText:     string
-  activeBorder:   string
   items:          NavItem[]
+  /** false = render items flat, no header button / dropdown to open */
+  collapsible?:   boolean
 }
 
 // ── Nav config ──────────────────────────────────────────────────
@@ -72,41 +71,25 @@ const NAV_GROUPS: NavGroup[] = [
     iconColor:    "text-gray-500 dark:text-gray-400",
     activeBg:     "bg-gray-100 dark:bg-white/8",
     activeText:   "text-gray-900 dark:text-white",
-    activeBorder: "border-gray-500",
+    collapsible:  false,
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard, exact: true },
     ],
   },
   {
     label:        "Data Pipeline",
-    groupIcon:    Database,
+    groupIcon:    Waypoints,
     permissionKey: "bi",
     dot:          "bg-sky-500",
     iconColor:    "text-sky-500 dark:text-sky-400",
     activeBg:     "bg-sky-50 dark:bg-sky-950/40",
     activeText:   "text-sky-700 dark:text-sky-300",
-    activeBorder: "border-sky-500",
     items: [
       { href: "/datapipeline/flows", label: "Flows", icon: Workflow },
-      { href: "/datapipeline/datasource", label: "Datasource", icon: Table2 },
+      { href: "/datapipeline/datasource", label: "Datasource", icon: Database },
       { href: "/datapipeline/conditions", label: "Conditions", icon: SlidersHorizontal },
-    ],
-  },
-  {
-    label:        "Data Warehouse",
-    groupIcon:    Warehouse,
-    permissionKey: "bi",
-    dot:          "bg-amber-500",
-    iconColor:    "text-amber-500 dark:text-amber-400",
-    activeBg:     "bg-amber-50 dark:bg-amber-950/40",
-    activeText:   "text-amber-700 dark:text-amber-300",
-    activeBorder: "border-amber-500",
-    items: [
-      { href: "/datawarehouse/trip", label: "Trip", icon: Truck },
-      { href: "/datawarehouse/weight", label: "Master น้ำหนัก", icon: Scale },
-      { href: "/datawarehouse/transport-cost", label: "Master ค่าขนส่ง", icon: Banknote },
-      { href: "/datawarehouse/driver-cost", label: "Master ค่าเที่ยว พจส", icon: Users },
-      { href: "/datawarehouse/fuel-qty", label: "Master จำนวนเชื้อเพลิง", icon: Droplets },
+      { href: "/datapipeline/data", label: "Data", icon: Warehouse },
+      { href: "/datapipeline/data", label: "Data", icon: Warehouse },
     ],
   },
   {
@@ -117,7 +100,6 @@ const NAV_GROUPS: NavGroup[] = [
     iconColor:    "text-indigo-500 dark:text-indigo-400",
     activeBg:     "bg-indigo-50 dark:bg-indigo-950/40",
     activeText:   "text-indigo-700 dark:text-indigo-300",
-    activeBorder: "border-indigo-500",
     items: [
       { href: "/masterdata/mastertruck", label: "Master รถ", icon: Truck },
       { href: "/masterdata/fuelrate", label: "Master ราคาน้ำมัน", icon: Fuel },
@@ -131,7 +113,6 @@ const NAV_GROUPS: NavGroup[] = [
     iconColor:    "text-slate-500 dark:text-slate-400",
     activeBg:     "bg-slate-100 dark:bg-slate-800/40",
     activeText:   "text-slate-700 dark:text-slate-300",
-    activeBorder: "border-slate-500",
     items: [
       { href: "/admin/users",  label: "Users",  icon: Users },
       { href: "/admin/groups", label: "Groups", icon: Shield },
@@ -157,7 +138,10 @@ export function Sidebar({
   const { data: session } = useSession()
 
   function isActive(href: string, exact?: boolean) {
-    return exact ? pathname === href : pathname.startsWith(href)
+    // match the page itself or its sub-pages only — plain startsWith would make
+    // "/datapipeline/data" light up while on "/datapipeline/datasource"
+    if (exact) return pathname === href
+    return pathname === href || pathname.startsWith(href + "/")
   }
 
   const isCollapsed   = !isMobile && collapsed
@@ -171,10 +155,21 @@ export function Sidebar({
     return new Set(active ? [active.label] : [])
   })
 
+  // Keep the group of the current page open when navigating (e.g. via links outside the sidebar)
+  const [lastPathname, setLastPathname] = useState(pathname)
+  if (lastPathname !== pathname) {
+    setLastPathname(pathname)
+    const active = visibleGroups.find(g => g.items.some(i => isActive(i.href, i.exact)))
+    if (active && !openGroups.has(active.label)) {
+      setOpenGroups(prev => new Set(prev).add(active.label))
+    }
+  }
+
   function toggleGroup(label: string) {
     setOpenGroups(prev => {
       const next = new Set(prev)
-      next.has(label) ? next.delete(label) : next.add(label)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
       return next
     })
   }
@@ -219,7 +214,8 @@ export function Sidebar({
       {/* ── Nav ───────────────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 space-y-0.5 px-2">
         {visibleGroups.map((group) => {
-          const groupOpen     = openGroups.has(group.label)
+          const isCollapsible = group.collapsible !== false
+          const groupOpen     = isCollapsible ? openGroups.has(group.label) : true
           const hasActiveItem = group.items.some(i => isActive(i.href, i.exact))
 
           return (
@@ -227,14 +223,14 @@ export function Sidebar({
 
               {/* Group header */}
               {isCollapsed ? (
-                // In collapsed mode: just a thin colored divider (skip Overview)
-                group.label !== "Overview" && (
+                // In collapsed mode: just a thin colored divider (skip non-collapsible groups, e.g. Overview)
+                isCollapsible && (
                   <div className={`mx-3 my-2 h-[2px] rounded-full ${group.dot} opacity-30`} />
                 )
-              ) : (
+              ) : !isCollapsible ? null : (
                 <button
                   onClick={() => toggleGroup(group.label)}
-                  className="group flex w-full items-center gap-2 px-2 py-1.5 mb-0.5 rounded-lg
+                  className="group flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg
                     hover:bg-gray-50 dark:hover:bg-white/4 transition-colors"
                 >
                   {/* Group icon */}
@@ -242,34 +238,37 @@ export function Sidebar({
                     const GIcon = group.groupIcon
                     return (
                       <GIcon
-                        size={14}
+                        size={16}
                         className={`shrink-0 transition-colors ${
                           hasActiveItem
                             ? group.iconColor
-                            : "text-gray-300 dark:text-gray-600 group-hover:text-gray-400 dark:group-hover:text-gray-500"
+                            : "text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400"
                         }`}
                       />
                     )
                   })()}
-                  <span className={`flex-1 text-left text-[11px] font-semibold tracking-wide
-                    transition-colors
+                  <span className={`flex-1 text-left text-[13px] font-semibold transition-colors
                     ${hasActiveItem
-                      ? "text-gray-700 dark:text-gray-200"
-                      : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-400"
+                      ? "text-gray-800 dark:text-gray-100"
+                      : "text-gray-600 dark:text-gray-300 group-hover:text-gray-800 dark:group-hover:text-gray-100"
                     }`}>
                     {group.label}
                   </span>
                   <ChevronDown
-                    size={11}
+                    size={13}
                     className={`shrink-0 text-gray-300 dark:text-gray-600 transition-transform duration-200
                       ${groupOpen ? "" : "-rotate-90"}`}
                   />
                 </button>
               )}
 
-              {/* Nav items */}
+              {/* Nav items — nested under the group header with a tree guide line */}
               {(isCollapsed || groupOpen) && (
-                <div className="space-y-0.5">
+                <div className={
+                  isCollapsed || !isCollapsible
+                    ? "space-y-0.5"
+                    : "mt-0.5 mb-1.5 ml-4.5 space-y-0.5 border-l border-gray-200 pl-1.5 dark:border-white/8"
+                }>
                   {group.items.map((item) => {
                     const Icon   = item.icon
                     const active = isActive(item.href, item.exact)
@@ -281,20 +280,27 @@ export function Sidebar({
                         onClick={isMobile ? onMobileClose : undefined}
                         title={isCollapsed ? item.label : undefined}
                         className={`
-                          group relative flex items-center rounded-lg text-[13px] font-medium
-                          transition-all duration-150
-                          ${isCollapsed ? "justify-center py-2.5 px-0" : "gap-2.5 px-2.5 py-2"}
+                          group relative flex items-center rounded-lg
+                          transition-colors duration-150
+                          ${isCollapsed
+                            ? "justify-center py-2.5 px-0 text-[13px]"
+                            : isCollapsible
+                              ? "gap-2.5 px-2 py-1.5 text-[12.5px]"
+                              : "gap-2.5 px-2.5 py-2 text-[13px]"}
                           ${active
-                            ? `${group.activeBg} ${group.activeText} border-l-[3px] ${group.activeBorder} pl-[7px]`
-                            : `border-l-[3px] border-transparent
-                               text-gray-500 dark:text-gray-400
+                            ? `${group.activeBg} ${group.activeText} font-semibold`
+                            : `font-medium text-gray-500 dark:text-gray-400
                                hover:bg-gray-50 dark:hover:bg-white/5
                                hover:text-gray-800 dark:hover:text-gray-200`
                           }
                         `}
                       >
+                        {/* active indicator — absolute so it never shifts the icon/label */}
+                        {active && (
+                          <span className={`absolute left-0 top-1/2 h-4 w-0.75 -translate-y-1/2 rounded-r-full ${group.dot}`} />
+                        )}
                         <Icon
-                          size={15}
+                          size={isCollapsed || !isCollapsible ? 15 : 14}
                           className={`shrink-0 transition-colors
                             ${active ? group.activeText : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300"}`}
                         />

@@ -2,47 +2,64 @@
 
 import { useCallback, useEffect, useState } from "react"
 import * as XLSX from "xlsx"
-import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw, Scale, Search, X } from "lucide-react"
+import {
+  Banknote,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react"
+import { BackLink } from "@/components/back-link"
 
-type WeightRow = {
+type CostRow = {
   monthKey: string
   issueDate: string | null
   ldt: string | null
-  ldtBase: string
   service: string
   subcode: string | null
   zone: string | null
   branch: string | null
-  weightOrigin: number
-  weightDest: number
-  weight: number
+  plateHead: string | null
+  amount: number
+  category: string
   computedAt?: string
 }
 
 type ApiData = {
-  rows: WeightRow[]
+  rows: CostRow[]
   total: number
   page: number
   pageSize: number
+  categories: string[]
   services: string[]
   branches: string[]
   zones: string[]
-  totalWeight: number | null
+  totalAmount: number | null
+  byCategory: Record<string, { rows: number; amount: number }> | null
   computedAt: string | null
   rulesVersion: number | null
 }
 
-const COLUMNS: Array<{ key: keyof WeightRow; label: string; numeric?: boolean }> = [
+const COLUMNS: Array<{ key: keyof CostRow; label: string; numeric?: boolean }> = [
   { key: "issueDate", label: "ออก LDT" },
   { key: "ldt", label: "LDT" },
   { key: "service", label: "บริการ" },
   { key: "subcode", label: "subcode" },
   { key: "zone", label: "โซน" },
   { key: "branch", label: "สาขา" },
-  { key: "weightOrigin", label: "น้ำหนักต้นทาง", numeric: true },
-  { key: "weightDest", label: "น้ำหนักปลายทาง", numeric: true },
-  { key: "weight", label: "น้ำหนัก", numeric: true },
+  { key: "plateHead", label: "หัว" },
+  { key: "category", label: "ประเภทรายได้" },
+  { key: "amount", label: "ค่าจัดส่ง", numeric: true },
 ]
+
+const CATEGORY_TONE: Record<string, string> = {
+  "ค่าขนส่ง": "text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40",
+  "ค่าโอนย้าย": "text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40",
+  "ประกันรายได้ + ค่าอื่นๆ": "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40",
+}
 
 const PAGE_SIZE = 50
 
@@ -54,15 +71,40 @@ function monthOptions(count = 24): string[] {
   })
 }
 
-function formatCell(value: unknown, numeric?: boolean): string {
-  if (value == null || value === "") return numeric ? "0" : "-"
-  if (typeof value === "number") return value.toLocaleString()
-  return String(value)
+const baht = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+
+function CategoryCard({
+  name,
+  rows,
+  amount,
+  active,
+  onClick,
+}: {
+  name: string
+  rows: number
+  amount: number
+  active: boolean
+  onClick: () => void
+}) {
+  const tone = CATEGORY_TONE[name] ?? "text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-white/5"
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-xl border px-4 py-3 text-left transition-colors
+        ${active
+          ? "border-sky-400 bg-sky-50/60 dark:bg-sky-950/30"
+          : "border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 hover:border-gray-300 dark:hover:border-white/16"}`}
+    >
+      <span className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tone}`}>{name}</span>
+      <p className="mt-1.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white">{baht(amount)}</p>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">{rows.toLocaleString()} แถว</p>
+    </button>
+  )
 }
 
-export default function WeightPage() {
-  // Default to the previous month — the last complete one
+export default function TransportCostPage() {
   const [monthKey, setMonthKey] = useState(monthOptions()[1])
+  const [category, setCategory] = useState("")
   const [service, setService] = useState("")
   const [branch, setBranch] = useState("")
   const [zone, setZone] = useState("")
@@ -75,20 +117,19 @@ export default function WeightPage() {
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const hasFilter = !!(category || service || branch || zone || q)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({
-        monthKey,
-        page: String(page),
-        pageSize: String(PAGE_SIZE),
-      })
+      const params = new URLSearchParams({ monthKey, page: String(page), pageSize: String(PAGE_SIZE) })
+      if (category) params.set("category", category)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
       if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/weight-data?${params}`)
+      const res = await fetch(`/api/cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
       setData(json.data)
@@ -97,7 +138,7 @@ export default function WeightPage() {
     } finally {
       setLoading(false)
     }
-  }, [monthKey, service, branch, zone, q, page])
+  }, [monthKey, category, service, branch, zone, q, page])
 
   useEffect(() => {
     load()
@@ -107,7 +148,7 @@ export default function WeightPage() {
     setRunning(true)
     setError(null)
     try {
-      const res = await fetch("/api/weight-etl", {
+      const res = await fetch("/api/cost-etl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ from: monthKey, to: monthKey }),
@@ -123,27 +164,26 @@ export default function WeightPage() {
     }
   }
 
-  const hasFilter = !!(service || branch || zone || q)
-
   async function exportExcel() {
     setExporting(true)
     setError(null)
     try {
       const params = new URLSearchParams({ monthKey, all: "1" })
+      if (category) params.set("category", category)
       if (service) params.set("service", service)
       if (branch) params.set("branch", branch)
       if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/weight-data?${params}`)
+      const res = await fetch(`/api/cost-data?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "export ไม่สำเร็จ")
-      const rows = (json.data.rows as WeightRow[]).map((r) =>
+      const rows = (json.data.rows as CostRow[]).map((r) =>
         Object.fromEntries(COLUMNS.map((c) => [c.label, r[c.key] ?? ""]))
       )
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "weightData")
-      XLSX.writeFile(wb, `weightData-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
+      XLSX.utils.book_append_sheet(wb, ws, "transportCost")
+      XLSX.writeFile(wb, `transportCost-${monthKey}${hasFilter ? "-filtered" : ""}.xlsx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "export ไม่สำเร็จ")
     } finally {
@@ -156,18 +196,43 @@ export default function WeightPage() {
 
   return (
     <div className="max-w-full">
+      <BackLink href="/datapipeline/data" label="กลับไปหน้า Data" />
+
       {/* Header */}
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/50">
-          <Scale size={18} className="text-emerald-600 dark:text-emerald-400" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-950/50">
+          <Banknote size={18} className="text-sky-600 dark:text-sky-400" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master น้ำหนัก</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Master ค่าขนส่ง</h1>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            น้ำหนักต่อเที่ยว (unique LDT) หลังตัดตามเงื่อนไข — น้ำหนักปลายทาง = 1 ใช้น้ำหนักต้นทาง
+            ค่าจัดส่งรายแถว (ไม่ dedupe) หลังตัดตามเงื่อนไข แยกตามประเภทรายได้
           </p>
         </div>
       </div>
+
+      {/* Category summary */}
+      {data?.byCategory && (
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(data.byCategory).map(([name, v]) => (
+            <CategoryCard
+              key={name}
+              name={name}
+              rows={v.rows}
+              amount={v.amount}
+              active={category === name}
+              onClick={() => { setCategory(category === name ? "" : name); setPage(1) }}
+            />
+          ))}
+          {data.totalAmount != null && (
+            <div className="rounded-xl border border-gray-900/10 dark:border-white/12 bg-gray-900 dark:bg-white/8 px-4 py-3">
+              <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-400">รวมทั้งหมด</span>
+              <p className="mt-1.5 text-xl font-bold tabular-nums text-white">{baht(data.totalAmount)}</p>
+              <p className="text-[11px] text-gray-400">{data.total.toLocaleString()} แถว (ตาม filter)</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -175,11 +240,11 @@ export default function WeightPage() {
           value={monthKey}
           onChange={(e) => {
             setMonthKey(e.target.value)
-            setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
+            setCategory(""); setService(""); setBranch(""); setZone(""); setQ(""); setQDraft("")
             setPage(1)
           }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           {monthOptions().map((mk) => (
             <option key={mk} value={mk}>{mk}</option>
@@ -189,37 +254,31 @@ export default function WeightPage() {
         <select
           value={service}
           onChange={(e) => { setService(e.target.value); setPage(1) }}
-          className="h-9 max-w-[260px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+          className="h-9 max-w-[240px] rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           <option value="">ทุกบริการ</option>
-          {(data?.services ?? []).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          {(data?.services ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
 
         <select
           value={branch}
           onChange={(e) => { setBranch(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           <option value="">ทุกสาขา</option>
-          {(data?.branches ?? []).map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
+          {(data?.branches ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
 
         <select
           value={zone}
           onChange={(e) => { setZone(e.target.value); setPage(1) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
         >
           <option value="">ทุกโซน</option>
-          {(data?.zones ?? []).map((z) => (
-            <option key={z} value={z}>{z}</option>
-          ))}
+          {(data?.zones ?? []).map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
 
         <div className="relative">
@@ -229,8 +288,8 @@ export default function WeightPage() {
             onChange={(e) => setQDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
             placeholder="ค้นหา LDT / subcode / ทะเบียน..."
-            className="h-9 w-56 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-400"
+            className="h-9 w-52 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
           />
           {q && (
             <button
@@ -245,10 +304,10 @@ export default function WeightPage() {
         <button
           onClick={runEtl}
           disabled={running || loading}
-          className="flex h-9 items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800/50
-            bg-emerald-50 dark:bg-emerald-950/30 px-3 text-[13px] font-medium
-            text-emerald-700 dark:text-emerald-300 disabled:opacity-50
-            hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
+          className="flex h-9 items-center gap-2 rounded-lg border border-sky-200 dark:border-sky-800/50
+            bg-sky-50 dark:bg-sky-950/30 px-3 text-[13px] font-medium
+            text-sky-700 dark:text-sky-300 disabled:opacity-50
+            hover:bg-sky-100 dark:hover:bg-sky-950/50 transition-colors"
         >
           {running ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {running ? "กำลังคำนวณ..." : "คำนวณใหม่ (ETL)"}
@@ -266,15 +325,8 @@ export default function WeightPage() {
         </button>
 
         <div className="ml-auto flex items-center gap-3 text-[12px] text-gray-400 dark:text-gray-500">
-          {data?.totalWeight != null && (
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-[13px]">
-              น้ำหนักรวม {data.totalWeight.toLocaleString()}
-            </span>
-          )}
-          {data && data.total > 0 && <span>{data.total.toLocaleString()} เที่ยว</span>}
-          {data?.computedAt && (
-            <span>คำนวณล่าสุด {new Date(data.computedAt).toLocaleString("th-TH")}</span>
-          )}
+          {data?.rulesVersion != null && <span>rules v{data.rulesVersion}</span>}
+          {data?.computedAt && <span>คำนวณล่าสุด {new Date(data.computedAt).toLocaleString("th-TH")}</span>}
         </div>
       </div>
 
@@ -285,12 +337,9 @@ export default function WeightPage() {
         </div>
       )}
 
-      {/* Table */}
       {isEmpty ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/12 p-10 text-center">
-          <p className="text-[13px] text-gray-500 dark:text-gray-400">
-            ยังไม่มีข้อมูลเดือน {monthKey} ใน data warehouse
-          </p>
+          <p className="text-[13px] text-gray-500 dark:text-gray-400">ยังไม่มีข้อมูลเดือน {monthKey}</p>
           <p className="mt-1 text-[12px] text-gray-400 dark:text-gray-500">
             กด &quot;คำนวณใหม่ (ETL)&quot; เพื่อประมวลผลจาก deliverResult
           </p>
@@ -302,7 +351,7 @@ export default function WeightPage() {
               <Loader2 size={15} className="animate-spin" /> กำลังโหลด...
             </div>
           ) : (
-            <div className="max-h-[calc(100vh-230px)] overflow-auto">
+            <div className="max-h-[calc(100vh-330px)] overflow-auto">
               <table className="w-full text-[12px] whitespace-nowrap">
                 <thead>
                   <tr>
@@ -311,8 +360,7 @@ export default function WeightPage() {
                         key={c.key}
                         className={`sticky top-0 z-10 border-b border-gray-200 dark:border-white/8
                           bg-gray-50 dark:bg-[#181c26] px-3 py-2.5 font-semibold
-                          text-gray-500 dark:text-gray-400
-                          ${c.numeric ? "text-right" : "text-left"}`}
+                          text-gray-500 dark:text-gray-400 ${c.numeric ? "text-right" : "text-left"}`}
                       >
                         {c.label}
                       </th>
@@ -322,20 +370,36 @@ export default function WeightPage() {
                 <tbody className={loading ? "opacity-50" : ""}>
                   {(data?.rows ?? []).map((row, i) => (
                     <tr
-                      key={`${row.ldtBase}-${i}`}
+                      key={i}
                       className="border-b border-gray-100 dark:border-white/5 last:border-0
                         hover:bg-gray-50 dark:hover:bg-white/4 transition-colors"
                     >
-                      {COLUMNS.map((c) => (
-                        <td
-                          key={c.key}
-                          className={`px-3 py-2 text-gray-700 dark:text-gray-300
-                            ${c.numeric ? "text-right tabular-nums" : ""}
-                            ${c.key === "weight" ? "font-semibold text-emerald-700 dark:text-emerald-400" : ""}`}
-                        >
-                          {formatCell(row[c.key], c.numeric)}
-                        </td>
-                      ))}
+                      {COLUMNS.map((c) => {
+                        const v = row[c.key]
+                        if (c.key === "category") {
+                          const tone = CATEGORY_TONE[row.category] ?? ""
+                          return (
+                            <td key={c.key} className="px-3 py-2">
+                              <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>
+                                {row.category}
+                              </span>
+                            </td>
+                          )
+                        }
+                        return (
+                          <td
+                            key={c.key}
+                            className={`px-3 py-2 text-gray-700 dark:text-gray-300
+                              ${c.numeric ? "text-right tabular-nums font-medium" : ""}`}
+                          >
+                            {c.numeric
+                              ? baht(Number(v ?? 0))
+                              : v != null && v !== ""
+                                ? String(v)
+                                : "-"}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                   {data && data.rows.length === 0 && (
@@ -350,19 +414,17 @@ export default function WeightPage() {
             </div>
           )}
 
-          {/* Pagination */}
           {data && data.total > 0 && (
             <div className="flex items-center justify-between border-t border-gray-200 dark:border-white/8 px-3 py-2">
               <span className="text-[12px] text-gray-400 dark:text-gray-500">
-                หน้า {data.page} / {totalPages.toLocaleString()}
+                หน้า {data.page} / {totalPages.toLocaleString()} · {data.total.toLocaleString()} แถว
               </span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage((p) => Math.max(p - 1, 1))}
                   disabled={page <= 1 || loading}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10
-                    text-gray-500 dark:text-gray-400 disabled:opacity-40
-                    hover:bg-gray-50 dark:hover:bg-white/6 transition-colors"
+                    text-gray-500 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-white/6"
                 >
                   <ChevronLeft size={14} />
                 </button>
@@ -370,8 +432,7 @@ export default function WeightPage() {
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                   disabled={page >= totalPages || loading}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10
-                    text-gray-500 dark:text-gray-400 disabled:opacity-40
-                    hover:bg-gray-50 dark:hover:bg-white/6 transition-colors"
+                    text-gray-500 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-white/6"
                 >
                   <ChevronRight size={14} />
                 </button>

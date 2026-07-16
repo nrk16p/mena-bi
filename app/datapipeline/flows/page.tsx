@@ -134,7 +134,7 @@ export default function FlowsPage() {
   }, [])
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       {/* Header */}
       <div className="mb-5 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-950/50">
