@@ -1,19 +1,9 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
-import { Download, Gauge, Loader2, RefreshCw } from "lucide-react"
+import { Download, Gauge, Loader2, RefreshCw, X } from "lucide-react"
 
 type Agg = {
   group: string
@@ -27,6 +17,8 @@ type Agg = {
 type ApiData = {
   groupBy: string
   groupDims: string[]
+  filterDims: string[]
+  filterOptions: Record<string, string[]>
   perfCols: string[]
   revCols: string[]
   costCols: string[]
@@ -34,8 +26,6 @@ type ApiData = {
   total: Agg
   attrCols: string[]
 }
-
-const REV_COLORS = ["#0891b2", "#7c3aed", "#d97706"]
 
 function monthOptions(count = 24): string[] {
   const now = new Date()
@@ -55,6 +45,7 @@ function PivotContent() {
 
   const [monthKey, setMonthKey] = useState("2026-05")
   const [groupBy, setGroupBy] = useState("Fleet")
+  const [dims, setDims] = useState<Record<string, string>>({})
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -65,6 +56,7 @@ function PivotContent() {
     setError(null)
     try {
       const params = new URLSearchParams({ martKey, monthKey, groupBy })
+      for (const [k, v] of Object.entries(dims)) if (v) params.set(k, v)
       const res = await fetch(`/api/mart-pivot?${params}`)
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
@@ -74,7 +66,7 @@ function PivotContent() {
     } finally {
       setLoading(false)
     }
-  }, [martKey, monthKey, groupBy])
+  }, [martKey, monthKey, groupBy, dims])
 
   useEffect(() => {
     load()
@@ -106,15 +98,6 @@ function PivotContent() {
     }
   }
 
-  const chartData = useMemo(
-    () =>
-      (data?.rows ?? []).slice(0, 12).map((r) => ({
-        name: r.group.length > 14 ? r.group.slice(0, 13) + "…" : r.group,
-        ...Object.fromEntries((data?.revCols ?? []).map((c) => [c, r.rev[c] ?? 0])),
-      })),
-    [data]
-  )
-
   return (
     <div className="max-w-full">
       {/* Header */}
@@ -132,7 +115,7 @@ function PivotContent() {
 
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={monthKey} onChange={(e) => setMonthKey(e.target.value)}
+        <select value={monthKey} onChange={(e) => { setMonthKey(e.target.value); setDims({}) }}
           className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-indigo-400">
           {monthOptions().map((mk) => <option key={mk} value={mk}>{mk}</option>)}
         </select>
@@ -156,32 +139,33 @@ function PivotContent() {
         {data && <span className="ml-auto text-[12px] text-gray-400 dark:text-gray-500">{data.rows.length} กลุ่ม</span>}
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-[13px] text-red-600 dark:text-red-400">{error}</div>
+      {/* Filters */}
+      {data && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 dark:border-white/8 bg-gray-50/60 dark:bg-white/3 px-3 py-2.5">
+          <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">ตัวกรอง</span>
+          {data.filterDims.map((d) => (
+            <select
+              key={d}
+              value={dims[d] ?? ""}
+              onChange={(e) => setDims((s) => ({ ...s, [d]: e.target.value }))}
+              className={`h-8 max-w-[150px] rounded-lg border bg-white dark:bg-white/5 px-2 text-[12px] outline-none focus:border-indigo-400
+                ${dims[d] ? "border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300"}`}
+            >
+              <option value="">ทุก {d}</option>
+              {(data.filterOptions[d] ?? []).map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          ))}
+          {Object.values(dims).some(Boolean) && (
+            <button onClick={() => setDims({})}
+              className="flex h-8 items-center gap-1 rounded-lg border border-gray-200 dark:border-white/10 px-2.5 text-[12px] text-gray-500 hover:bg-white dark:hover:bg-white/6">
+              <X size={12} /> ล้างตัวกรอง
+            </button>
+          )}
+        </div>
       )}
 
-      {/* Revenue composition chart */}
-      {data && data.rows.length > 0 && (
-        <div className="mb-4 rounded-xl border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 p-4">
-          <p className="mb-2 text-[12px] font-semibold text-gray-500 dark:text-gray-400">
-            องค์ประกอบรายได้ ตาม {groupBy} {data.rows.length > 12 && "(12 อันดับแรก)"}
-          </p>
-          <div style={{ width: "100%", height: 260 }}>
-            <ResponsiveContainer>
-              <BarChart data={chartData} margin={{ top: 5, right: 16, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.35} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="#94a3b8" interval={0} angle={-20} textAnchor="end" height={50} />
-                <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" width={70}
-                  tickFormatter={(v) => Number(v).toLocaleString(undefined, { notation: "compact" })} />
-                <Tooltip formatter={(v: unknown) => Number(v).toLocaleString()} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {(data.revCols ?? []).map((c, i) => (
-                  <Bar key={c} dataKey={c} stackId="rev" fill={REV_COLORS[i % REV_COLORS.length]} radius={i === data.revCols.length - 1 ? [4, 4, 0, 0] : undefined} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-[13px] text-red-600 dark:text-red-400">{error}</div>
       )}
 
       {/* Pivot table */}

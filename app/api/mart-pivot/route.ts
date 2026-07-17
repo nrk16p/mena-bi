@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
 import { DELIVER_DB } from "@/lib/trip-count/source"
+import { MART_DATA_COLLECTION } from "@/lib/mart/engine"
 import { runModelQuery } from "@/lib/model/query"
 
 const MONTH_KEY_RE = /^\d{4}-\d{2}$/
@@ -13,6 +14,8 @@ const MONTH_KEY_RE = /^\d{4}-\d{2}$/
 // measure engine (lib/model/query) so the numbers share one source of truth.
 const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "เชื้อเพลิง", "Type"]
 const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "เชื้อเพลิง", "Type", "fuelType"]
+// Dimensions the user can slice the pivot by (each becomes a filter dropdown).
+const FILTER_DIMS = ["ทะเบียนรถ", "บริการ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
 const PERF = ["เที่ยว", "น้ำหนัก"]
 const REVENUE_CATS = ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"]
 // Cost tier: display key → semantic measure key
@@ -37,7 +40,7 @@ export async function GET(req: NextRequest) {
   }
   const groupBy = GROUP_DIMS.includes(searchParams.get("groupBy") ?? "") ? searchParams.get("groupBy")! : "Fleet"
 
-  const filters = ATTR_DIMS.map((d) => ({ field: d, values: searchParams.get(d) ? [searchParams.get(d)!] : [] })).filter(
+  const filters = FILTER_DIMS.map((d) => ({ field: d, values: searchParams.get(d) ? [searchParams.get(d)!] : [] })).filter(
     (f) => f.values.length,
   )
 
@@ -48,7 +51,8 @@ export async function GET(req: NextRequest) {
   const measures = [...PERF, ...REVENUE_CATS, "รายได้รวม", ...COST.map((c) => c.measure)]
 
   const client = await clientPromise
-  const result = await runModelQuery(client.db(DELIVER_DB), {
+  const db = client.db(DELIVER_DB)
+  const result = await runModelQuery(db, {
     modelKey: martKey,
     monthKey,
     dimensions,
@@ -56,6 +60,16 @@ export async function GET(req: NextRequest) {
     filters,
     sortBy: "รายได้รวม",
   })
+
+  // Distinct values per filter dimension for the month (not cascading).
+  const col = db.collection(MART_DATA_COLLECTION)
+  const optEntries = await Promise.all(
+    FILTER_DIMS.map(async (d) => {
+      const vals = await col.distinct(d, { martKey, monthKey })
+      return [d, vals.filter((v) => v != null && v !== "").map(String).sort((a, b) => a.localeCompare(b, "th"))] as const
+    }),
+  )
+  const filterOptions = Object.fromEntries(optEntries)
 
   const shape = (dims: Record<string, string>, values: Record<string, number>, group: string) => ({
     group,
@@ -74,6 +88,8 @@ export async function GET(req: NextRequest) {
     data: {
       groupBy,
       groupDims: GROUP_DIMS,
+      filterDims: FILTER_DIMS,
+      filterOptions,
       perfCols: PERF,
       revCols: REVENUE_CATS,
       costCols: COST.map((c) => c.key),
