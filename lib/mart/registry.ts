@@ -69,6 +69,10 @@ export const TRUCK_SUMMARY: MartConfig = {
       as: "ค่าเชื้อเพลิง",
     },
   ],
+  // Master Logic: KPI rule (น้ำหนัก / เที่ยว / วันทำงาน) per Fleet × Site.
+  attrJoins: [
+    { source: "performanceLogic", ymField: "YM", keyFields: ["Fleet", "Site"], valueField: "Logic", as: "Logic" },
+  ],
 }
 
 const STATIC_MARTS: Record<string, MartConfig> = {

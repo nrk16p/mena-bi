@@ -25,6 +25,7 @@ import {
   Share2,
   Layers,
   Gauge,
+  Ruler,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -119,6 +120,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/masterdata/mastertruck", label: "Master รถ", icon: Truck },
       { href: "/masterdata/fuelrate", label: "Master ราคาน้ำมัน", icon: Fuel },
+      { href: "/masterdata/performancelogic", label: "Master Logic", icon: Ruler },
     ],
   },
   {

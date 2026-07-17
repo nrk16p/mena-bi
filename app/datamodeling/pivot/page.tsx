@@ -8,6 +8,7 @@ import { Download, Gauge, Loader2, RefreshCw, X } from "lucide-react"
 type Agg = {
   group: string
   attrs: Record<string, string>
+  logic: string
   perf: Record<string, number>
   rev: Record<string, number>
   revTotal: number
@@ -38,6 +39,17 @@ const money = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits
 const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
 // cost as a % of that row's revenue (revenue = 100%)
 const pctOfRev = (v: number, rev: number) => (rev > 0 ? `${((v / rev) * 100).toFixed(1)}%` : "-")
+
+const LOGIC_STYLE: Record<string, string> = {
+  น้ำหนัก: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+  เที่ยว: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+  วันทำงาน: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+}
+function LogicPill({ v }: { v: string }) {
+  if (!v || v === "-") return <span className="text-gray-300 dark:text-gray-600">–</span>
+  const cls = LOGIC_STYLE[v] ?? "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400"
+  return <span className={`inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-[10.5px] font-medium ${cls}`}>{v}</span>
+}
 
 function PivotContent() {
   const searchParams = useSearchParams()
@@ -79,6 +91,7 @@ function PivotContent() {
       const flat = data.rows.map((r) => ({
         [groupBy]: r.group,
         ...(data.attrCols.length ? Object.fromEntries(data.attrCols.map((a) => [a, r.attrs[a] ?? ""])) : {}),
+        Logic: r.logic,
         ...Object.fromEntries(data.perfCols.map((c) => [c, r.perf[c] ?? 0])),
         ...Object.fromEntries(data.revCols.map((c) => [c, r.rev[c] ?? 0])),
         "รวมรายได้": r.revTotal,
@@ -190,14 +203,15 @@ function PivotContent() {
                   {data?.attrCols.map((a) => (
                     <th key={a} rowSpan={2} className="sticky top-0 z-10 border-b border-gray-200 dark:border-white/8 bg-gray-50 dark:bg-[#181c26] px-3 py-2 text-left text-[11px] font-semibold text-gray-400">{a}</th>
                   ))}
-                  <th colSpan={data?.perfCols.length} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-cyan-50 dark:bg-cyan-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Performance</th>
+                  <th colSpan={(data?.perfCols.length ?? 0) + 1} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-cyan-50 dark:bg-cyan-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Performance</th>
                   <th colSpan={(data?.revCols.length ?? 0) + 1} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Revenue</th>
                   <th colSpan={data?.costCols.length} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-rose-50 dark:bg-rose-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">Cost</th>
                 </tr>
                 {/* measure header row */}
                 <tr>
-                  {data?.perfCols.map((c, i) => (
-                    <th key={c} className={`sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-cyan-50/60 dark:bg-cyan-950/20 px-3 py-2 text-right text-[11px] font-semibold text-cyan-700 dark:text-cyan-300 ${i === 0 ? "border-l" : ""}`}>{c}</th>
+                  <th className="sticky top-[29px] z-10 border-b border-l border-gray-200 dark:border-white/8 bg-cyan-50/60 dark:bg-cyan-950/20 px-3 py-2 text-left text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">Logic</th>
+                  {data?.perfCols.map((c) => (
+                    <th key={c} className="sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-cyan-50/60 dark:bg-cyan-950/20 px-3 py-2 text-right text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{c}</th>
                   ))}
                   {data?.revCols.map((c, i) => (
                     <th key={c} className={`sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-right text-[11px] font-semibold text-amber-700 dark:text-amber-300 ${i === 0 ? "border-l" : ""}`}>{c}</th>
@@ -215,8 +229,9 @@ function PivotContent() {
                     {data.attrCols.map((a) => (
                       <td key={a} className="px-3 py-2 text-gray-500 dark:text-gray-400">{r.attrs[a] || "-"}</td>
                     ))}
-                    {data.perfCols.map((c, i) => (
-                      <td key={c} className={`px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300 ${i === 0 ? "border-l border-gray-100 dark:border-white/5" : ""}`}>{qty(r.perf[c] ?? 0)}</td>
+                    <td className="border-l border-gray-100 dark:border-white/5 px-3 py-2"><LogicPill v={r.logic} /></td>
+                    {data.perfCols.map((c) => (
+                      <td key={c} className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{qty(r.perf[c] ?? 0)}</td>
                     ))}
                     {data.revCols.map((c, i) => (
                       <td key={c} className={`px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300 ${i === 0 ? "border-l border-gray-100 dark:border-white/5" : ""}`}>{money(r.rev[c] ?? 0)}</td>
@@ -234,8 +249,9 @@ function PivotContent() {
                   <tr className="bg-gray-100 dark:bg-white/8 font-bold">
                     <td className="sticky left-0 z-10 bg-gray-100 dark:bg-[#1c2129] px-3 py-2.5 text-gray-900 dark:text-white">{data.total.group}</td>
                     {data.attrCols.map((a) => <td key={a} />)}
-                    {data.perfCols.map((c, i) => (
-                      <td key={c} className={`px-3 py-2.5 text-right tabular-nums text-gray-900 dark:text-white ${i === 0 ? "border-l border-gray-200 dark:border-white/8" : ""}`}>{qty(data.total.perf[c] ?? 0)}</td>
+                    <td className="border-l border-gray-200 dark:border-white/8 px-3 py-2.5" />
+                    {data.perfCols.map((c) => (
+                      <td key={c} className="px-3 py-2.5 text-right tabular-nums text-gray-900 dark:text-white">{qty(data.total.perf[c] ?? 0)}</td>
                     ))}
                     {data.revCols.map((c, i) => (
                       <td key={c} className={`px-3 py-2.5 text-right tabular-nums text-gray-900 dark:text-white ${i === 0 ? "border-l border-gray-200 dark:border-white/8" : ""}`}>{money(data.total.rev[c] ?? 0)}</td>

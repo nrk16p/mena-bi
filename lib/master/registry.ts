@@ -37,4 +37,15 @@ export const MASTERS: Record<string, MasterConfig> = {
     requiredColumns: ["Fleet"],
     sort: { YM: -1, Fleet: 1 },
   },
+  performancelogic: {
+    key: "performancelogic",
+    name: "Master Logic",
+    description: "Logic วัดผล Performance ต่อ Fleet × Site (น้ำหนัก / เที่ยว / วันทำงาน)",
+    collection: "performanceLogic",
+    columns: ["YM", "Fleet", "Site", "Logic"],
+    numericColumns: [],
+    searchFields: ["Fleet", "Site", "Logic"],
+    requiredColumns: ["Fleet", "Site"],
+    sort: { YM: -1, Fleet: 1, Site: 1 },
+  },
 }

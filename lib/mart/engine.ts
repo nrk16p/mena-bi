@@ -42,6 +42,17 @@ export interface RateJoin {
   as: string // "ค่าน้ำมัน"
 }
 
+/** A categorical master lookup: stamp a value onto each grain cell by matching
+ *  YM × one or more key fields (e.g. Fleet + Site → Logic). Unlike RateJoin this
+ *  carries a label, not a number. */
+export interface AttrJoin {
+  source: string // "performanceLogic"
+  ymField: string // "YM"
+  keyFields: string[] // grain/master fields to match — ["Fleet", "Site"]
+  valueField: string // "Logic"
+  as: string // output field on the fact — "Logic"
+}
+
 export interface MartConfig {
   martKey: string
   name: string
@@ -63,6 +74,8 @@ export interface MartConfig {
   grainExclude?: { field: string; values: string[] }
   // Optional master rate joins (quantity × looked-up rate → cost).
   rateJoins?: RateJoin[]
+  // Optional categorical master joins (stamp a label by key fields).
+  attrJoins?: AttrJoin[]
 }
 
 export interface MartResult {
@@ -200,6 +213,19 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
     }
   }
 
+  // ── Categorical master joins: stamp a label onto each grain cell ──
+  for (const aj of mart.attrJoins ?? []) {
+    const proj: Document = { _id: 0, [aj.valueField]: 1 }
+    for (const k of aj.keyFields) proj[k] = 1
+    const rows = await db.collection(aj.source).find({ [aj.ymField]: ym }, { projection: proj }).toArray()
+    const lookup = new Map<string, string>()
+    for (const r of rows) lookup.set(aj.keyFields.map((k) => str(r[k])).join(SEP), str(r[aj.valueField]))
+    for (const [, cell] of grain) {
+      const key = aj.keyFields.map((k) => str(cell.base[k])).join(SEP)
+      cell.base[aj.as] = lookup.get(key) ?? null
+    }
+  }
+
   // ── Conformed dimensions ──
   const fleetMap = new Map<string, Document>()
   const truckMap = new Map<string, Document>()
@@ -250,6 +276,7 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
       }
     }
     for (const rj of mart.rateJoins ?? []) fact[rj.as] = round(cell.measures[rj.as] ?? 0)
+    for (const aj of mart.attrJoins ?? []) fact[aj.as] = cell.base[aj.as] ?? null
     fact._matched = cell.matched
     facts.push(fact)
   }

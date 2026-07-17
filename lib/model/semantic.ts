@@ -83,6 +83,7 @@ const TRUCK_DIMENSIONS: Dimension[] = [
   { key: "เชื้อเพลิง", label: "เชื้อเพลิง", table: "dim_truck" },
   { key: "Type", label: "Type", table: "dim_truck" },
   { key: "fuelType", label: "Oil/NGV", table: "dim_truck" },
+  { key: "Logic", label: "Logic (KPI)", table: "dim_fleet" },
   { key: "monthKey", label: "เดือน", table: "dim_month" },
 ]
 

@@ -12,10 +12,10 @@ const MONTH_KEY_RE = /^\d{4}-\d{2}$/
 // The pivot groups the truck-summary fact up to a chosen dimension and splits
 // measures into performance vs revenue. It is now a thin adapter over the
 // measure engine (lib/model/query) so the numbers share one source of truth.
-const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
-const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "Plant", "เชื้อเพลิง", "Type", "fuelType"]
+const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type", "Logic"]
+const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "Plant", "เชื้อเพลิง", "Type", "fuelType", "Logic"]
 // Dimensions the user can slice the pivot by (each becomes a filter dropdown).
-const FILTER_DIMS = ["ทะเบียนรถ", "บริการ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
+const FILTER_DIMS = ["ทะเบียนรถ", "บริการ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type", "Logic"]
 const PERF = ["เที่ยว", "น้ำหนัก"]
 const REVENUE_CATS = ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"]
 // Cost tier: display key → semantic measure key
@@ -80,9 +80,26 @@ export async function GET(req: NextRequest) {
   )
   const filterOptions = Object.fromEntries(optEntries)
 
+  // Logic (KPI rule) per group — a group may span several Fleet×Site logics.
+  const logicQ = await runModelQuery(db, { modelKey: martKey, monthKey, dimensions: [groupBy, "Logic"], measures: ["เที่ยว"], filters })
+  const logicByGroup = new Map<string, Set<string>>()
+  for (const r of logicQ.rows) {
+    const g = r.dims[groupBy] || "(ไม่ระบุ)"
+    const lg = r.dims["Logic"]
+    const set = logicByGroup.get(g) ?? new Set<string>()
+    if (lg && lg !== "(ไม่ระบุ)") set.add(lg)
+    logicByGroup.set(g, set)
+  }
+  const logicOf = (g: string) => {
+    const s = logicByGroup.get(g)
+    if (!s || s.size === 0) return "-"
+    return s.size === 1 ? [...s][0] : "หลายแบบ"
+  }
+
   const shape = (dims: Record<string, string>, values: Record<string, number>, group: string) => ({
     group,
     attrs: byPlate ? Object.fromEntries(ATTR_DIMS.map((a) => [a, dims[a] ?? ""])) : {},
+    logic: logicOf(group),
     perf: Object.fromEntries(PERF.map((k) => [k, values[k] ?? 0])),
     rev: Object.fromEntries(REVENUE_CATS.map((k) => [k, values[k] ?? 0])),
     revTotal: values["รายได้รวม"] ?? 0,
