@@ -37,11 +37,14 @@ export async function GET(req: NextRequest) {
   if (!mart) return NextResponse.json({ error: "Unknown mart" }, { status: 400 })
   const col = db.collection(MART_DATA_COLLECTION)
 
-  // Columns: grain + dims + measures (+ fuelType)
-  const measureCols = mart.measures.flatMap((m) => [
-    ...m.fields.map((f) => f.as),
-    ...(m.countAs ? [m.countAs] : []),
-  ])
+  // Columns: grain + dims + measures + rate joins (+ fuelType)
+  const measureCols = [
+    ...mart.measures.flatMap((m) => [
+      ...m.fields.map((f) => f.as),
+      ...(m.countAs ? [m.countAs] : []),
+    ]),
+    ...(mart.rateJoins ?? []).map((rj) => rj.as),
+  ]
   const columns = ["ทะเบียนรถ", "บริการ", ...mart.dimAttrs, "fuelType", ...measureCols]
   const numericCols = measureCols
 

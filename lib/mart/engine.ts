@@ -28,6 +28,20 @@ export interface MeasureSpec {
   countAs?: string // if set, also emit a row-count measure under this name
 }
 
+/** A master rate lookup: multiply grain quantities by a rate keyed on
+ *  YM × a master field. Rate rows may carry a " <fuelType>" suffix on their key
+ *  (e.g. "Side Curtain NGV") to split the rate by fuel type; unsuffixed keys
+ *  apply to any fuel type. cost = Σ qty × resolved rate. */
+export interface RateJoin {
+  source: string // "fuelRate"
+  ymField: string // "YM" in the rate collection
+  keyField: string // grain/master field to match — "เชื้อเพลิง"
+  rateKeyField: string // column in the rate collection holding the key — "Fleet"
+  rateField: string // "ราคาน้ำมัน/ลิตร"
+  terms: Array<{ qty: string; fuelType: string }> // [{qty:"Oil",fuelType:"Oil"},{qty:"NGV",fuelType:"NGV"}]
+  as: string // "ค่าน้ำมัน"
+}
+
 export interface MartConfig {
   martKey: string
   name: string
@@ -44,6 +58,11 @@ export interface MartConfig {
   fuelTypeSource?: { source: string; plateField: string; typeField: string }
   // Optional condition: keep only base (master) rows where field ∈ values.
   baseFilter?: { field: string; values: string[] }
+  // Optional condition: drop base (master) rows where field ∈ values. Used to keep
+  // the head plate (หัว) as the sole grain — a หาง (tail) is never its own row.
+  grainExclude?: { field: string; values: string[] }
+  // Optional master rate joins (quantity × looked-up rate → cost).
+  rateJoins?: RateJoin[]
 }
 
 export interface MartResult {
@@ -83,6 +102,9 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
   const baseQuery: Document = { [mart.monthField]: ym }
   if (mart.baseFilter && mart.baseFilter.values.length) {
     baseQuery[mart.baseFilter.field] = { $in: mart.baseFilter.values }
+  }
+  if (mart.grainExclude && mart.grainExclude.values.length) {
+    baseQuery[mart.grainExclude.field] = { $nin: mart.grainExclude.values }
   }
   const baseRows = await db
     .collection(mart.grainMaster)
@@ -155,6 +177,29 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
     }
   }
 
+  // ── Master rate joins: quantity × rate looked up by YM × keyField ──
+  for (const rj of mart.rateJoins ?? []) {
+    const rateRows = await db
+      .collection(rj.source)
+      .find({ [rj.ymField]: ym }, { projection: { _id: 0, [rj.rateKeyField]: 1, [rj.rateField]: 1 } })
+      .toArray()
+    const suffixRe = new RegExp(`^(.*?)\\s+(${rj.terms.map((t) => t.fuelType).join("|")})$`)
+    const lookup = new Map<string, number>()
+    for (const rr of rateRows) {
+      const raw = str(rr[rj.rateKeyField])
+      const m = raw.match(suffixRe)
+      lookup.set(m ? `${m[1]}|${m[2]}` : `${raw}|*`, num(rr[rj.rateField]))
+    }
+    // exact fuel-type rate, else the unsuffixed rate for that key
+    const resolve = (key: string, ft: string) => lookup.get(`${key}|${ft}`) ?? lookup.get(`${key}|*`) ?? 0
+    for (const [, cell] of grain) {
+      const key = str(cell.base[rj.keyField])
+      let cost = 0
+      for (const t of rj.terms) cost += (cell.measures[t.qty] ?? 0) * resolve(key, t.fuelType)
+      cell.measures[rj.as] = cost
+    }
+  }
+
   // ── Conformed dimensions ──
   const fleetMap = new Map<string, Document>()
   const truckMap = new Map<string, Document>()
@@ -204,6 +249,7 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
         fact[m.groupByAs] = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, round(v)]))
       }
     }
+    for (const rj of mart.rateJoins ?? []) fact[rj.as] = round(cell.measures[rj.as] ?? 0)
     fact._matched = cell.matched
     facts.push(fact)
   }

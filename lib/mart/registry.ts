@@ -8,7 +8,7 @@ export const MARTS_COLLECTION = "etl_marts"
 export const TRUCK_SUMMARY: MartConfig = {
   martKey: "truck-summary",
   name: "สรุปรายรถ (Master รถ × น้ำหนัก × ค่าขนส่ง × ค่าเที่ยว × เชื้อเพลิง)",
-  description: "รายรถต่อเดือน — grain = ทะเบียน × บริการ; น้ำหนักนับคู่ head+tail; Oil/NGV จาก fuelQtyData",
+  description: "รายรถต่อเดือน — grain = ทะเบียน(หัว) × บริการ; ใช้หัวเป็นหลักไม่นับหาง; ค่าเชื้อเพลิง = Oil/NGV × ราคาน้ำมัน",
   grainMaster: "mastertruck",
   monthField: "YM",
   grainKeys: ["ทะเบียนรถ", "บริการ"],
@@ -17,10 +17,13 @@ export const TRUCK_SUMMARY: MartConfig = {
   dimAttrs: ["ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"],
   fleetAttrs: ["Fleet", "Site", "Group Site"],
   fuelTypeSource: { source: "fuelQtyData", plateField: "plateHead", typeField: "fuelType" },
+  // หัว (head) is always the grain; a หาง (tail) is never its own row — it rolls
+  // into its head. Tails always have a head; heads may have many tails or none.
+  grainExclude: { field: "Type", values: ["หาง", "หาง-รถร่วม"] },
   measures: [
     {
       source: "weightData",
-      plateKeys: ["plateHead", "plateTail"], // นับคู่: 1 เที่ยวนับให้ทั้งหัวและหาง
+      plateKeys: ["plateHead"], // หัวเป็นหลัก: 1 เที่ยว = 1 แถวส่งของ นับให้หัวครั้งเดียว
       serviceField: "service",
       fields: [{ field: "weight", as: "น้ำหนักรวม" }],
       countAs: "จำนวนเที่ยว",
@@ -47,6 +50,23 @@ export const TRUCK_SUMMARY: MartConfig = {
         { field: "oil", as: "Oil" },
         { field: "ngv", as: "NGV" },
       ],
+    },
+  ],
+  // Master ราคาน้ำมัน: ค่าเชื้อเพลิง = Oil × rate + NGV × rate, rate keyed on
+  // YM × เชื้อเพลิง (fuelRate's "Fleet" column actually holds เชื้อเพลิง values,
+  // with an " Oil"/" NGV" suffix on Side Curtain & Trailer).
+  rateJoins: [
+    {
+      source: "fuelRate",
+      ymField: "YM",
+      keyField: "เชื้อเพลิง",
+      rateKeyField: "Fleet",
+      rateField: "ราคาน้ำมัน/ลิตร",
+      terms: [
+        { qty: "Oil", fuelType: "Oil" },
+        { qty: "NGV", fuelType: "NGV" },
+      ],
+      as: "ค่าเชื้อเพลิง",
     },
   ],
 }

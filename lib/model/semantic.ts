@@ -59,6 +59,7 @@ const TRUCK_MEASURES: Measure[] = [
   { kind: "category", key: "ประกันรายได้ + ค่าอื่นๆ", label: "ประกันรายได้ + ค่าอื่นๆ", group: "revenue", format: "baht", mapField: MAP_TRANSPORT, category: "ประกันรายได้ + ค่าอื่นๆ" },
   // Cost / fuel
   { kind: "sum", key: "ค่าเที่ยวรวม", label: "ค่าเที่ยว (พขร.)", group: "cost", format: "baht", field: "ค่าเที่ยวรวม" },
+  { kind: "sum", key: "ค่าเชื้อเพลิง", label: "ค่าเชื้อเพลิง", group: "cost", format: "baht", field: "ค่าเชื้อเพลิง" },
   { kind: "sum", key: "Oil", label: "Oil (ลิตร)", group: "fuel", format: "num", field: "Oil" },
   { kind: "sum", key: "NGV", label: "NGV (กก.)", group: "fuel", format: "num", field: "NGV" },
   // Calculated
@@ -68,6 +69,7 @@ const TRUCK_MEASURES: Measure[] = [
   { kind: "calc", key: "น้ำหนัก/เที่ยว", label: "น้ำหนัก/เที่ยว", group: "ratio", format: "num", deps: ["น้ำหนัก", "เที่ยว"], eval: (m) => safeDiv(m["น้ำหนัก"] ?? 0, m["เที่ยว"] ?? 0) },
   { kind: "calc", key: "บาท/น้ำหนัก", label: "รายได้/น้ำหนัก", group: "ratio", format: "baht", deps: ["รายได้รวม", "น้ำหนัก"], eval: (m) => safeDiv(m["รายได้รวม"] ?? 0, m["น้ำหนัก"] ?? 0) },
   { kind: "calc", key: "ค่าเที่ยว/เที่ยว", label: "ค่าเที่ยวเฉลี่ย", group: "ratio", format: "baht", deps: ["ค่าเที่ยวรวม", "เที่ยว"], eval: (m) => safeDiv(m["ค่าเที่ยวรวม"] ?? 0, m["เที่ยว"] ?? 0) },
+  { kind: "calc", key: "ค่าเชื้อเพลิง/เที่ยว", label: "ค่าเชื้อเพลิงเฉลี่ย", group: "ratio", format: "baht", deps: ["ค่าเชื้อเพลิง", "เที่ยว"], eval: (m) => safeDiv(m["ค่าเชื้อเพลิง"] ?? 0, m["เที่ยว"] ?? 0) },
 ]
 
 const TRUCK_DIMENSIONS: Dimension[] = [
