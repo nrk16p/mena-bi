@@ -12,8 +12,8 @@ const MONTH_KEY_RE = /^\d{4}-\d{2}$/
 // The pivot groups the truck-summary fact up to a chosen dimension and splits
 // measures into performance vs revenue. It is now a thin adapter over the
 // measure engine (lib/model/query) so the numbers share one source of truth.
-const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "เชื้อเพลิง", "Type"]
-const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "เชื้อเพลิง", "Type", "fuelType"]
+const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
+const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "Plant", "เชื้อเพลิง", "Type", "fuelType"]
 // Dimensions the user can slice the pivot by (each becomes a filter dropdown).
 const FILTER_DIMS = ["ทะเบียนรถ", "บริการ", "ศูนย์", "Fleet", "Site", "Group Site", "Plant", "เชื้อเพลิง", "Type"]
 const PERF = ["เที่ยว", "น้ำหนัก"]
@@ -61,11 +61,20 @@ export async function GET(req: NextRequest) {
     sortBy: "รายได้รวม",
   })
 
-  // Distinct values per filter dimension for the month (not cascading).
+  // Distinct values per filter dimension — cascading: each dimension's options
+  // reflect the OTHER active filters (not its own), so the dropdowns respond to
+  // the data actually available under the current selection.
   const col = db.collection(MART_DATA_COLLECTION)
+  const active: Record<string, string> = {}
+  for (const d of FILTER_DIMS) {
+    const v = searchParams.get(d)
+    if (v) active[d] = v
+  }
   const optEntries = await Promise.all(
     FILTER_DIMS.map(async (d) => {
-      const vals = await col.distinct(d, { martKey, monthKey })
+      const q: Record<string, string> = { martKey, monthKey }
+      for (const [f, v] of Object.entries(active)) if (f !== d) q[f] = v
+      const vals = await col.distinct(d, q)
       return [d, vals.filter((v) => v != null && v !== "").map(String).sort((a, b) => a.localeCompare(b, "th"))] as const
     }),
   )
