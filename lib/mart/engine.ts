@@ -47,7 +47,7 @@ export interface RateJoin {
  *  carries a label, not a number. */
 export interface AttrJoin {
   source: string // "performanceLogic"
-  ymField: string // "YM"
+  ymField?: string // "YM" — omit for a month-agnostic rule that applies to every mart month
   keyFields: string[] // grain/master fields to match — ["Fleet", "Site"]
   valueField: string // "Logic"
   as: string // output field on the fact — "Logic"
@@ -217,7 +217,9 @@ export async function buildMonthMart(db: Db, mart: MartConfig, ym: number): Prom
   for (const aj of mart.attrJoins ?? []) {
     const proj: Document = { _id: 0, [aj.valueField]: 1 }
     for (const k of aj.keyFields) proj[k] = 1
-    const rows = await db.collection(aj.source).find({ [aj.ymField]: ym }, { projection: proj }).toArray()
+    // month-agnostic when ymField is omitted — one rule set applies to every month
+    const q: Document = aj.ymField ? { [aj.ymField]: ym } : {}
+    const rows = await db.collection(aj.source).find(q, { projection: proj }).toArray()
     const lookup = new Map<string, string>()
     for (const r of rows) lookup.set(aj.keyFields.map((k) => str(r[k])).join(SEP), str(r[aj.valueField]))
     for (const [, cell] of grain) {

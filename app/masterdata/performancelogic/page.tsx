@@ -9,7 +9,7 @@ export default function PerformanceLogicPage() {
       masterKey="performancelogic"
       icon={<Ruler size={18} className="text-indigo-600 dark:text-indigo-400" />}
       searchPlaceholder="ค้นหา Fleet / Site / Logic..."
-      templateExample={{ YM: 202605, Fleet: "Mixer L", Site: "Asia", Logic: "น้ำหนัก" }}
+      templateExample={{ Fleet: "Mixer L", Site: "Asia", Logic: "น้ำหนัก" }}
     />
   )
 }

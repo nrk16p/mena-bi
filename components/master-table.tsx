@@ -15,7 +15,7 @@ import {
 type MasterRow = Record<string, string | number | null>
 
 type ApiData = {
-  master: { key: string; name: string; description: string; collection: string }
+  master: { key: string; name: string; description: string; collection: string; monthless?: boolean }
   columns: string[]
   rows: MasterRow[]
   total: number
@@ -183,17 +183,19 @@ export function MasterTable({
 
       {/* Filters + actions */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select
-          value={monthKey}
-          onChange={(e) => { setMonthKey(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
-            px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-indigo-400"
-        >
-          <option value="all">ทุกเดือน</option>
-          {(data?.months ?? []).map((mk) => (
-            <option key={mk} value={mk}>{mk}</option>
-          ))}
-        </select>
+        {!data?.master.monthless && (
+          <select
+            value={monthKey}
+            onChange={(e) => { setMonthKey(e.target.value); setPage(1) }}
+            className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
+              px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-indigo-400"
+          >
+            <option value="all">ทุกเดือน</option>
+            {(data?.months ?? []).map((mk) => (
+              <option key={mk} value={mk}>{mk}</option>
+            ))}
+          </select>
+        )}
 
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />

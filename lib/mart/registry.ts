@@ -70,8 +70,9 @@ export const TRUCK_SUMMARY: MartConfig = {
     },
   ],
   // Master Logic: KPI rule (น้ำหนัก / เที่ยว / วันทำงาน) per Fleet × Site.
+  // No ymField → the rule is month-agnostic and applies to every mart month.
   attrJoins: [
-    { source: "performanceLogic", ymField: "YM", keyFields: ["Fleet", "Site"], valueField: "Logic", as: "Logic" },
+    { source: "performanceLogic", keyFields: ["Fleet", "Site"], valueField: "Logic", as: "Logic" },
   ],
 }
 

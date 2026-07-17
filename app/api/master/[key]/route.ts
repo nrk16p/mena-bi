@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
   const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") ?? 50) || 50, 10), 200)
 
   const filter: Record<string, unknown> = {}
-  if (monthKey !== "all") {
+  if (!master.monthless && monthKey !== "all") {
     const ym = monthKeyToYm(monthKey)
     if (!ym) return NextResponse.json({ error: "Invalid monthKey" }, { status: 400 })
     filter.YM = ym
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
 
   const [total, yms, rows] = await Promise.all([
     col.countDocuments(filter),
-    col.distinct("YM"),
+    master.monthless ? Promise.resolve([]) : col.distinct("YM"),
     col
       .find(filter, { projection: { _id: 0 } })
       .sort(master.sort)
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
   return NextResponse.json({
     success: true,
     data: {
-      master: { key: master.key, name: master.name, description: master.description, collection: master.collection },
+      master: { key: master.key, name: master.name, description: master.description, collection: master.collection, monthless: master.monthless ?? false },
       columns: master.columns,
       rows,
       total,
@@ -115,10 +115,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     rows?: Array<Record<string, unknown>>
     defaultMonthKey?: string
   }
-  const fallbackYm = monthKeyToYm(body.defaultMonthKey ?? "")
-  if (!fallbackYm) {
-    return NextResponse.json({ error: "defaultMonthKey=YYYY-MM is required" }, { status: 400 })
-  }
   if (!Array.isArray(body.rows) || body.rows.length === 0) {
     return NextResponse.json({ error: "ไม่มีข้อมูลใน file" }, { status: 400 })
   }
@@ -126,11 +122,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     return NextResponse.json({ error: `เกิน ${MAX_IMPORT_ROWS} แถว` }, { status: 400 })
   }
 
-  const byYm = new Map<number, Array<Record<string, unknown>>>()
-  for (const raw of body.rows) {
-    if (raw == null || typeof raw !== "object") continue
+  // Clean one raw row → validated row, or null to skip.
+  const clean = (raw: unknown): Record<string, unknown> | null => {
+    if (raw == null || typeof raw !== "object") return null
     const row: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       const col = k.trim()
       if (!col || col === "_id" || col.startsWith("__EMPTY") || col.startsWith("_imported")) continue
       let value: unknown = typeof v === "string" ? v.trim() : v
@@ -140,32 +136,47 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       }
       row[col] = value
     }
-    if (master.requiredColumns.some((c) => row[c] == null || row[c] === "")) continue
+    if (master.requiredColumns.some((c) => row[c] == null || row[c] === "")) return null
+    return row
+  }
+
+  const client = await clientPromise
+  const col = client.db(DELIVER_DB).collection(master.collection)
+  const importedAt = new Date()
+  const missingErr = { error: `ไม่พบแถวที่มี ${master.requiredColumns.join(", ")} — ตรวจหัวคอลัมน์ให้ตรง template` }
+
+  // Monthless master: one global set — replace everything.
+  if (master.monthless) {
+    const rows = body.rows.map(clean).filter((r): r is Record<string, unknown> => r != null)
+    if (!rows.length) return NextResponse.json(missingErr, { status: 400 })
+    const removed = await col.deleteMany({})
+    await col.insertMany(rows.map((r) => ({ ...r, _imported_at: importedAt, _imported_by: perms.email })))
+    return NextResponse.json({ success: true, data: [{ monthKey: "all", removed: removed.deletedCount, inserted: rows.length }] })
+  }
+
+  // Monthly master: each month present in the file is replaced wholesale.
+  const fallbackYm = monthKeyToYm(body.defaultMonthKey ?? "")
+  if (!fallbackYm) {
+    return NextResponse.json({ error: "defaultMonthKey=YYYY-MM is required" }, { status: 400 })
+  }
+  const byYm = new Map<number, Array<Record<string, unknown>>>()
+  for (const raw of body.rows) {
+    const row = clean(raw)
+    if (!row) continue
     const ym = resolveYm(row["YM"], fallbackYm)
     row["YM"] = ym
     const list = byYm.get(ym)
     if (list) list.push(row)
     else byYm.set(ym, [row])
   }
+  if (!byYm.size) return NextResponse.json(missingErr, { status: 400 })
 
-  if (!byYm.size) {
-    return NextResponse.json(
-      { error: `ไม่พบแถวที่มี ${master.requiredColumns.join(", ")} — ตรวจหัวคอลัมน์ให้ตรง template` },
-      { status: 400 }
-    )
-  }
-
-  const client = await clientPromise
-  const col = client.db(DELIVER_DB).collection(master.collection)
   await col.createIndex({ YM: 1 })
-
-  const importedAt = new Date()
   const results = []
   for (const [ym, rows] of [...byYm.entries()].sort((a, b) => a[0] - b[0])) {
     const removed = await col.deleteMany({ YM: ym })
     await col.insertMany(rows.map((r) => ({ ...r, _imported_at: importedAt, _imported_by: perms.email })))
     results.push({ monthKey: ymToMonthKey(ym), removed: removed.deletedCount, inserted: rows.length })
   }
-
   return NextResponse.json({ success: true, data: results })
 }

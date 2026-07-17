@@ -12,6 +12,8 @@ export interface MasterConfig {
   /** every imported row must have these — rows without them are skipped */
   requiredColumns: string[]
   sort: Record<string, 1 | -1>
+  /** true = not tied to a month (no YM); one global set, import replaces all */
+  monthless?: boolean
 }
 
 export const MASTERS: Record<string, MasterConfig> = {
@@ -40,12 +42,13 @@ export const MASTERS: Record<string, MasterConfig> = {
   performancelogic: {
     key: "performancelogic",
     name: "Master Logic",
-    description: "Logic วัดผล Performance ต่อ Fleet × Site (น้ำหนัก / เที่ยว / วันทำงาน)",
+    description: "Logic วัดผล Performance ต่อ Fleet × Site (น้ำหนัก / เที่ยว / วันทำงาน) — ใช้กับทุกเดือน/ปี",
     collection: "performanceLogic",
-    columns: ["YM", "Fleet", "Site", "Logic"],
+    columns: ["Fleet", "Site", "Logic"],
     numericColumns: [],
     searchFields: ["Fleet", "Site", "Logic"],
     requiredColumns: ["Fleet", "Site"],
-    sort: { YM: -1, Fleet: 1, Site: 1 },
+    sort: { Fleet: 1, Site: 1 },
+    monthless: true,
   },
 }
