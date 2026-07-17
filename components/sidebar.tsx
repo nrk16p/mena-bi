@@ -23,6 +23,8 @@ import {
   Fuel,
   Droplets,
   Share2,
+  Layers,
+  Gauge,
 } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
@@ -102,6 +104,8 @@ const NAV_GROUPS: NavGroup[] = [
     activeText:   "text-cyan-700 dark:text-cyan-300",
     items: [
       { href: "/datamodeling/model", label: "Model View", icon: Share2 },
+      { href: "/datamodeling/mart", label: "Data Mart", icon: Layers },
+      { href: "/datamodeling/pivot", label: "Pivot Dashboard", icon: Gauge },
     ],
   },
   {

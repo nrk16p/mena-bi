@@ -84,7 +84,7 @@ export function Dashboard() {
     return (
       <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/12 p-10 text-center text-[13px] text-gray-500 dark:text-gray-400">
         ยังไม่มีข้อมูล Data Mart — สร้าง/คำนวณ mart สรุปรายรถ ก่อน
-        <Link href="/datapipeline/data/mart?mart=truck-summary" className="ml-2 text-cyan-600 dark:text-cyan-400 hover:underline">ไปที่ Data Mart →</Link>
+        <Link href="/datamodeling/mart?mart=truck-summary" className="ml-2 text-cyan-600 dark:text-cyan-400 hover:underline">ไปที่ Data Mart →</Link>
       </div>
     )
   }
@@ -105,7 +105,7 @@ export function Dashboard() {
         <span className="rounded-md bg-gray-100 dark:bg-white/8 px-2 py-0.5 text-[12px] font-medium text-gray-500 dark:text-gray-400">
           {data.month}
         </span>
-        <Link href="/datapipeline/data/pivot"
+        <Link href="/datamodeling/pivot"
           className="ml-auto flex items-center gap-1 text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
           Pivot Dashboard <ArrowRight size={14} />
         </Link>

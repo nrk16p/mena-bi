@@ -80,7 +80,7 @@ export default function NewMartPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ martKey, from: "2026-05", to: "2026-05" }),
       })
-      router.push(`/datapipeline/data/mart?mart=${martKey}`)
+      router.push(`/datamodeling/mart?mart=${martKey}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : "สร้างไม่สำเร็จ")
       setCreating(false)

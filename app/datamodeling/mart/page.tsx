@@ -182,7 +182,7 @@ function MartContent() {
           {marts.length > 1 && (
             <select
               value={martKey}
-              onChange={(e) => router.push(`/datapipeline/data/mart?mart=${e.target.value}`)}
+              onChange={(e) => router.push(`/datamodeling/mart?mart=${e.target.value}`)}
               className="h-9 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
                 px-3 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-cyan-400"
             >
