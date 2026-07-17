@@ -21,6 +21,7 @@ type Agg = {
   perf: Record<string, number>
   rev: Record<string, number>
   revTotal: number
+  cost: Record<string, number>
 }
 
 type ApiData = {
@@ -28,6 +29,7 @@ type ApiData = {
   groupDims: string[]
   perfCols: string[]
   revCols: string[]
+  costCols: string[]
   rows: Agg[]
   total: Agg
   attrCols: string[]
@@ -44,6 +46,8 @@ function monthOptions(count = 24): string[] {
 }
 const money = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 })
 const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+// cost as a % of that row's revenue (revenue = 100%)
+const pctOfRev = (v: number, rev: number) => (rev > 0 ? `${((v / rev) * 100).toFixed(1)}%` : "-")
 
 function PivotContent() {
   const searchParams = useSearchParams()
@@ -86,6 +90,12 @@ function PivotContent() {
         ...Object.fromEntries(data.perfCols.map((c) => [c, r.perf[c] ?? 0])),
         ...Object.fromEntries(data.revCols.map((c) => [c, r.rev[c] ?? 0])),
         "รวมรายได้": r.revTotal,
+        ...Object.fromEntries(
+          data.costCols.flatMap((c) => [
+            [c, r.cost[c] ?? 0],
+            [`${c} %รายได้`, r.revTotal > 0 ? +(((r.cost[c] ?? 0) / r.revTotal) * 100).toFixed(1) : 0],
+          ])
+        ),
       }))
       const ws = XLSX.utils.json_to_sheet(flat)
       const wb = XLSX.utils.book_new()
@@ -113,9 +123,9 @@ function PivotContent() {
           <Gauge size={18} className="text-indigo-600 dark:text-indigo-400" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Pivot Dashboard — Performance &amp; Revenue</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Pivot Dashboard — Performance · Revenue · Cost</h1>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            สรุปรายรถจัดกลุ่ม — Performance (เที่ยว, น้ำหนัก) · Revenue (ค่าขนส่ง, ค่าโอนย้าย, ประกันรายได้)
+            สรุปรายรถจัดกลุ่ม — Performance (เที่ยว, น้ำหนัก) · Revenue (ค่าขนส่ง, ค่าโอนย้าย, ประกันรายได้) · Cost (ค่าเที่ยว, ค่าเชื้อเพลิง)
           </p>
         </div>
       </div>
@@ -198,6 +208,7 @@ function PivotContent() {
                   ))}
                   <th colSpan={data?.perfCols.length} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-cyan-50 dark:bg-cyan-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Performance</th>
                   <th colSpan={(data?.revCols.length ?? 0) + 1} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Revenue</th>
+                  <th colSpan={data?.costCols.length} className="sticky top-0 z-10 border-b border-l border-gray-200 dark:border-white/8 bg-rose-50 dark:bg-rose-950/30 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-wide text-rose-700 dark:text-rose-300">Cost</th>
                 </tr>
                 {/* measure header row */}
                 <tr>
@@ -208,6 +219,9 @@ function PivotContent() {
                     <th key={c} className={`sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2 text-right text-[11px] font-semibold text-amber-700 dark:text-amber-300 ${i === 0 ? "border-l" : ""}`}>{c}</th>
                   ))}
                   <th className="sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-amber-100/70 dark:bg-amber-950/40 px-3 py-2 text-right text-[11px] font-bold text-amber-800 dark:text-amber-200">รวมรายได้</th>
+                  {data?.costCols.map((c, i) => (
+                    <th key={c} className={`sticky top-[29px] z-10 border-b border-gray-200 dark:border-white/8 bg-rose-50/60 dark:bg-rose-950/20 px-3 py-2 text-right text-[11px] font-semibold text-rose-700 dark:text-rose-300 ${i === 0 ? "border-l" : ""}`}>{c === "ค่าเชื้อเพลิง" ? "ค่าเชื้อเพลิง *" : c}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -224,6 +238,12 @@ function PivotContent() {
                       <td key={c} className={`px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300 ${i === 0 ? "border-l border-gray-100 dark:border-white/5" : ""}`}>{money(r.rev[c] ?? 0)}</td>
                     ))}
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-400">{money(r.revTotal)}</td>
+                    {data.costCols.map((c, i) => (
+                      <td key={c} className={`px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300 ${i === 0 ? "border-l border-gray-100 dark:border-white/5" : ""}`}>
+                        <div>{money(r.cost[c] ?? 0)}</div>
+                        <div className="text-[10px] font-normal text-rose-500/80 dark:text-rose-400/70">{pctOfRev(r.cost[c] ?? 0, r.revTotal)}</div>
+                      </td>
+                    ))}
                   </tr>
                 ))}
                 {data && (
@@ -237,6 +257,12 @@ function PivotContent() {
                       <td key={c} className={`px-3 py-2.5 text-right tabular-nums text-gray-900 dark:text-white ${i === 0 ? "border-l border-gray-200 dark:border-white/8" : ""}`}>{money(data.total.rev[c] ?? 0)}</td>
                     ))}
                     <td className="px-3 py-2.5 text-right tabular-nums text-amber-800 dark:text-amber-300">{money(data.total.revTotal)}</td>
+                    {data.costCols.map((c, i) => (
+                      <td key={c} className={`px-3 py-2.5 text-right tabular-nums text-gray-900 dark:text-white ${i === 0 ? "border-l border-gray-200 dark:border-white/8" : ""}`}>
+                        <div>{money(data.total.cost[c] ?? 0)}</div>
+                        <div className="text-[10px] font-semibold text-rose-600 dark:text-rose-400">{pctOfRev(data.total.cost[c] ?? 0, data.total.revTotal)}</div>
+                      </td>
+                    ))}
                   </tr>
                 )}
               </tbody>
@@ -244,6 +270,12 @@ function PivotContent() {
           </div>
         )}
       </div>
+
+      {data && data.rows.length > 0 && (
+        <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+          * ค่าเชื้อเพลิง = ปริมาณ Oil/NGV × ราคาน้ำมัน/ลิตร (จาก Master ราคาน้ำมัน ตาม YM × เชื้อเพลิง)
+        </p>
+      )}
     </div>
   )
 }

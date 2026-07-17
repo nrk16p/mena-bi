@@ -15,6 +15,11 @@ const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "
 const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "เชื้อเพลิง", "Type", "fuelType"]
 const PERF = ["เที่ยว", "น้ำหนัก"]
 const REVENUE_CATS = ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"]
+// Cost tier: display key → semantic measure key
+const COST = [
+  { key: "ค่าเที่ยว", measure: "ค่าเที่ยวรวม" },
+  { key: "ค่าเชื้อเพลิง", measure: "ค่าเชื้อเพลิง" },
+]
 
 // GET /api/mart-pivot?martKey=truck-summary&monthKey=2026-05&groupBy=Fleet&Fleet=&Type=...
 export async function GET(req: NextRequest) {
@@ -40,7 +45,7 @@ export async function GET(req: NextRequest) {
   // carry them (a plate has one consistent master row).
   const byPlate = groupBy === "ทะเบียนรถ"
   const dimensions = byPlate ? ["ทะเบียนรถ", ...ATTR_DIMS] : [groupBy]
-  const measures = [...PERF, ...REVENUE_CATS, "รายได้รวม"]
+  const measures = [...PERF, ...REVENUE_CATS, "รายได้รวม", ...COST.map((c) => c.measure)]
 
   const client = await clientPromise
   const result = await runModelQuery(client.db(DELIVER_DB), {
@@ -58,6 +63,7 @@ export async function GET(req: NextRequest) {
     perf: Object.fromEntries(PERF.map((k) => [k, values[k] ?? 0])),
     rev: Object.fromEntries(REVENUE_CATS.map((k) => [k, values[k] ?? 0])),
     revTotal: values["รายได้รวม"] ?? 0,
+    cost: Object.fromEntries(COST.map((c) => [c.key, values[c.measure] ?? 0])),
   })
 
   const pivot = result.rows.map((r) => shape(r.dims, r.values, r.dims[groupBy] ?? "(ไม่ระบุ)"))
@@ -70,6 +76,7 @@ export async function GET(req: NextRequest) {
       groupDims: GROUP_DIMS,
       perfCols: PERF,
       revCols: REVENUE_CATS,
+      costCols: COST.map((c) => c.key),
       rows: pivot,
       total,
       attrCols: byPlate ? ATTR_DIMS : [],
