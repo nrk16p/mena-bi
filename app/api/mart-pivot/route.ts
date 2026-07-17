@@ -11,7 +11,7 @@ const MONTH_KEY_RE = /^\d{4}-\d{2}$/
 // The pivot groups the truck-summary fact up to a chosen dimension and splits
 // measures into performance vs revenue. It is now a thin adapter over the
 // measure engine (lib/model/query) so the numbers share one source of truth.
-const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "เชื้อเพลิง", "Type"]
+const GROUP_DIMS = ["ทะเบียนรถ", "ศูนย์", "Fleet", "Site", "Group Site", "เชื้อเพลิง", "Type"]
 const ATTR_DIMS = ["ศูนย์", "Fleet", "Site", "เชื้อเพลิง", "Type", "fuelType"]
 const PERF = ["เที่ยว", "น้ำหนัก"]
 const REVENUE_CATS = ["ค่าขนส่ง", "ค่าโอนย้าย", "ประกันรายได้ + ค่าอื่นๆ"]
