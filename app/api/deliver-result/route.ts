@@ -3,28 +3,57 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { getUserPermissions } from "@/lib/permissions"
 import clientPromise from "@/lib/mongo"
-import { DELIVER_DB, DELIVER_COLLECTION } from "@/lib/trip-count/source"
+import { DELIVER_DB, DELIVER_COLLECTION, DRIVER_COST_COLLECTION } from "@/lib/trip-count/source"
 
-// Columns exposed to the datasource table (subset of the ~70 Excel columns)
-const COLUMNS = [
-  "ออก LDT",
-  "LDT",
-  "บริการ",
-  "subcode",
-  "โซน",
-  "ชื่อshipto",
-  "จังหวัด",
-  "เลขรถ",
-  "หัว",
-  "หาง",
-  "พจส",
-  "ประเภทรถร่วม",
-  "ค่าจัดส่ง",
-  "สถานะตั๋ว",
-  "_branch",
-] as const
+// Per-source table config: columns exposed (subset of the raw Excel columns)
+// and the fields free-text search matches against.
+const SOURCES: Record<string, { collection: string; columns: string[]; searchFields: string[] }> = {
+  deliverResult: {
+    collection: DELIVER_COLLECTION,
+    columns: [
+      "ออก LDT",
+      "LDT",
+      "บริการ",
+      "subcode",
+      "โซน",
+      "ชื่อshipto",
+      "จังหวัด",
+      "เลขรถ",
+      "หัว",
+      "หาง",
+      "พจส",
+      "ประเภทรถร่วม",
+      "ค่าจัดส่ง",
+      "สถานะตั๋ว",
+      "_branch",
+    ],
+    searchFields: ["LDT", "subcode", "ชื่อshipto", "หัว", "หาง", "เลขรถ"],
+  },
+  driverCost: {
+    collection: DRIVER_COST_COLLECTION,
+    columns: [
+      "ออก LDT",
+      "LDT",
+      "บริการ",
+      "subcode",
+      "โซน",
+      "ประเภทรถร่วม",
+      "หัว",
+      "พจส1",
+      "พจส2",
+      "ค่าเที่ยว พจส 1",
+      "ค่าเที่ยว พจส 2",
+      "Rate น้ำมัน พจส 1",
+      "Rate น้ำมัน พจส 2",
+      "Rate NGV พจส 1",
+      "Rate NGV พจส 2",
+      "_branch",
+    ],
+    searchFields: ["LDT", "subcode", "หัว", "พจส1", "พจส2"],
+  },
+}
 
-// GET /api/deliver-result?monthKey=2026-06&page=1&pageSize=50&branch=&service=&zone=&q=
+// GET /api/deliver-result?source=deliverResult&monthKey=2026-06&page=1&pageSize=50&branch=&service=&zone=&q=
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   const perms = await getUserPermissions(session?.user?.email)
@@ -33,6 +62,10 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
+  const source = SOURCES[searchParams.get("source") ?? "deliverResult"]
+  if (!source) {
+    return NextResponse.json({ error: "Unknown source" }, { status: 400 })
+  }
   const monthKey = searchParams.get("monthKey") ?? ""
   const m = monthKey.match(/^(\d{4})-(\d{2})$/)
   if (!m) {
@@ -52,13 +85,13 @@ export async function GET(req: NextRequest) {
   if (zone) filter["โซน"] = zone
   if (q) {
     const re = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" }
-    filter.$or = [{ LDT: re }, { subcode: re }, { ชื่อshipto: re }, { หัว: re }, { หาง: re }, { เลขรถ: re }]
+    filter.$or = source.searchFields.map((f) => ({ [f]: re }))
   }
 
   const client = await clientPromise
-  const col = client.db(DELIVER_DB).collection(DELIVER_COLLECTION)
+  const col = client.db(DELIVER_DB).collection(source.collection)
 
-  const projection = Object.fromEntries([["_id", 0], ...COLUMNS.map((c) => [c, 1])])
+  const projection = Object.fromEntries([["_id", 0], ...source.columns.map((c) => [c, 1])])
   const [total, branches, services, zones, rows] = await Promise.all([
     col.countDocuments(filter),
     col.distinct("_branch", monthFilter),
@@ -75,7 +108,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     data: {
-      columns: COLUMNS,
+      columns: source.columns,
       rows,
       total,
       page,

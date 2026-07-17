@@ -16,6 +16,26 @@ type ApiData = {
   zones: string[]
 }
 
+// Tabs mirror the datasource whitelist in lib/etl/flows.ts (SOURCES)
+const SOURCE_TABS = [
+  {
+    key: "deliverResult",
+    label: "รายงานผลการจัดส่ง",
+    collection: "deliverResult",
+    description: "ข้อมูลดิบรายงานผลการจัดส่งจาก ATMS",
+    searchPlaceholder: "ค้นหา LDT / subcode / shipto / ทะเบียน...",
+  },
+  {
+    key: "driverCost",
+    label: "ค่าเที่ยว พขร.",
+    collection: "driverCost",
+    description: "ข้อมูลดิบรายงานค่าเที่ยว พขร. จาก ATMS",
+    searchPlaceholder: "ค้นหา LDT / subcode / หัว / พจส...",
+  },
+] as const
+
+type SourceKey = (typeof SOURCE_TABS)[number]["key"]
+
 function monthOptions(count = 24): string[] {
   const now = new Date()
   return Array.from({ length: count }, (_, i) => {
@@ -33,6 +53,7 @@ function formatCell(value: string | number | null): string {
 const PAGE_SIZE = 50
 
 export default function DatasourcePage() {
+  const [source, setSource] = useState<SourceKey>("deliverResult")
   const [monthKey, setMonthKey] = useState(monthOptions()[0])
   const [branch, setBranch] = useState("")
   const [service, setService] = useState("")
@@ -44,11 +65,26 @@ export default function DatasourcePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const tab = SOURCE_TABS.find((t) => t.key === source) ?? SOURCE_TABS[0]
+
+  const switchSource = (key: SourceKey) => {
+    if (key === source) return
+    setSource(key)
+    setBranch("")
+    setService("")
+    setZone("")
+    setQ("")
+    setQDraft("")
+    setPage(1)
+    setData(null)
+  }
+
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams({
+        source,
         monthKey,
         page: String(page),
         pageSize: String(PAGE_SIZE),
@@ -57,19 +93,22 @@ export default function DatasourcePage() {
       if (service) params.set("service", service)
       if (zone) params.set("zone", zone)
       if (q) params.set("q", q)
-      const res = await fetch(`/api/deliver-result?${params}`)
+      const res = await fetch(`/api/deliver-result?${params}`, { signal })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? "โหลดข้อมูลไม่สำเร็จ")
       setData(json.data)
+      setLoading(false)
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return
       setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ")
-    } finally {
       setLoading(false)
     }
-  }, [monthKey, branch, service, zone, q, page])
+  }, [source, monthKey, branch, service, zone, q, page])
 
   useEffect(() => {
-    load()
+    const ctrl = new AbortController()
+    load(ctrl.signal)
+    return () => ctrl.abort()
   }, [load])
 
   const totalPages = data ? Math.max(Math.ceil(data.total / data.pageSize), 1) : 1
@@ -82,11 +121,33 @@ export default function DatasourcePage() {
           <Database size={18} className="text-sky-600 dark:text-sky-400" />
         </div>
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Datasource — deliverResult</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Datasource — {tab.collection}</h1>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            ข้อมูลดิบรายงานผลการจัดส่งจาก ATMS (db mena-bi.deliverResult)
+            {tab.description} (db mena-bi.{tab.collection})
           </p>
         </div>
+      </div>
+
+      {/* Source tabs */}
+      <div className="mb-4 flex items-center gap-1 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/4 p-1 w-fit">
+        {SOURCE_TABS.map((t) => {
+          const active = t.key === source
+          return (
+            <button
+              key={t.key}
+              onClick={() => switchSource(t.key)}
+              className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-colors
+                ${active
+                  ? "bg-white dark:bg-white/10 text-sky-600 dark:text-sky-400 shadow-sm"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`}
+            >
+              {t.label}
+              <span className={`font-mono text-[10px] ${active ? "text-sky-400 dark:text-sky-500" : "text-gray-400 dark:text-gray-500"}`}>
+                {t.collection}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Filters */}
@@ -144,7 +205,7 @@ export default function DatasourcePage() {
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { setQ(qDraft.trim()); setPage(1) } }}
-            placeholder="ค้นหา LDT / subcode / shipto / ทะเบียน..."
+            placeholder={tab.searchPlaceholder}
             className="h-9 w-64 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5
               pl-8 pr-7 text-[13px] text-gray-700 dark:text-gray-200 outline-none focus:border-sky-400"
           />
